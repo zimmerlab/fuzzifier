@@ -59,13 +59,14 @@ make matrix_prepare
 ```
 
 ### raw log2FC fuzzification
-
+The raw log2FC values are fuzzified using sample-pair-wise default fuzzification.
 ```
 make raw_log2FC_concept
 make raw_log2FC_fuzzify
 ```
 
 ### fuzzy rule fuzzification
+For each miRNA, the tumor and normal expression values in each cancer type are fuzzified using default fuzzification, where the fuzzy concept are derived based on the normal expression value distirbution in each cancer type. Fuzzy values of tumor and normal expression of each miRNA in each tumor-normal sample pair are combined using a set of fuzzy rules to perform fold change fuzzification in fuzzy space.
 ```
 make fuzzy_rule_concept
 make fuzzy_rule_numerator
@@ -74,11 +75,15 @@ make fuzzy_rule_combine
 ```
 
 ### identification and validation of cancer-specific and marker miRNAs
+Cancer-specific miRNAs are selected from DESeq2 results by thresholds for log2 foldchange and corrected _p_-values (DESeq2 standard method), or by setting cutoffs for fuzzy values in fuzzy sets --/- and ++/+. Additionally, the percentage of sample pairs with their highest fuzzy value in these corresponidng fuzzy sets are observed. The thresholds differ for the three methods. The identified cancer-specific results are compared to the CMC tables, where results with CMC score of at leat 3.0 can be considered as validated
+
+Markers are defined as cancer-specific miRNAs, which are only found to be specific in exactly one cancer type. They are selected from the identified cancer-miRNAs and validated in the same way.
 ```
 make comparison
 ```
 
 ### visualization
+Figures are generated for (example) fuzzy concepts, common markers that are validated and identified by all four methods, venn-diagram for overlaps between cancer-specific results from the four methods as well as ridgeline plots of tumor and normal expression in each cancer type for the identified cancer-specific miRNAs.
 ```
 make visualization
 ```
