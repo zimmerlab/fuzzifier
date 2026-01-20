@@ -87,6 +87,8 @@ fuzzy_rule_combine: ./FV_fuzzy_log2FC/numerator/ ./FV_fuzzy_log2FC/denominator/
 		--denominator ./FV_fuzzy_log2FC/denominator/ \
 		--output ./FV_fuzzy_log2FC/fuzzy_rule/
 
+
+# identification and validation of cancer-specific or marker miRNAs
 comparison: ./data/ ./FV_paired_log2FC/ ./FV_fuzzy_log2FC/ ./FV_DESeq2/ ./config/comparison.json ./gkae017_supplemental_files/
 	$(PYTHON) main_comparison.py --standard ./data/ \
 		--raw ./FV_paired_log2FC/ \
@@ -101,16 +103,20 @@ comparison: ./data/ ./FV_paired_log2FC/ ./FV_fuzzy_log2FC/ ./FV_DESeq2/ ./config
 		--reference ./gkae017_supplemental_files/ \
 		--cmcCut 3
 
+
+# visualization
 visualization: ./data/ ./results/ ./config/visualization.json
 	$(PYTHON) main_visualization.py --data ./data/ \
 		--result ./results/ \
 		--metadata ./data/metadata.tsv \
 		--config ./config/visualization.json \
 		--output ./visualization/
-	mkdir -p ./visualization/upset_plots/
+	mkdir -p ./upset_plots/
 	Rscript visOverlap.R \
 		--methods "DESeq2 2-aspect,DESeq2 standard,fuzzy rule,raw log2FC" \
 		--compPath ./results/comparison_results.tsv \
-		--output ./visualization/upset_plots/ \
+		--output ./upset_plots/ \
 		--cmcCut 3
+	mkdir -p ./ridgelines/
+	bash run_ridgeline.sh ./results/comparison_results.tsv ./ridgelines/
 
