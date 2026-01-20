@@ -1,0 +1,11 @@
+{
+    "define_concept_per": "matrix",
+    "label_values": [],
+    "rename_fuzzy_sets": {
+        "FS1": "--",
+        "FS2": "-",
+        "FS3": "o",
+        "FS4": "+",
+        "FS5": "++"
+    }
+}

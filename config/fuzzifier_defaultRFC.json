@@ -1,0 +1,16 @@
+{
+    "left_noise_cutoff": "-Infinity",
+    "right_noise_cutoff": "+Infinity",
+    "define_concept_per": "sample",
+    "label_values": ["-Infinity", "+Infinity", "NA"],
+    "rename_fuzzy_sets": {
+        "FS0_nan": "NA",
+        "FS0_-inf": "-INF",
+        "FS0_inf": "INF",
+        "FS1": "--",
+        "FS2": "-",
+        "FS3": "o",
+        "FS4": "+",
+        "FS5": "++"
+    }
+}

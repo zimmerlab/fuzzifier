@@ -1,0 +1,7 @@
+{
+    "metadata_index_column": "sample",
+    "metadata_cluster_column": "context",
+    "numeratorCol": "tumor",
+    "denominatorCol": "normal",
+    "pseudo_count": 0
+}
