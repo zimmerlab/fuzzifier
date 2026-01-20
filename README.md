@@ -5,25 +5,25 @@ Instead of significant feature identification with statistical tests, we demonst
 ## Requirements
 ### Python packages (Python version 3.13.5)
 ```
-numpy
-pandas
-scipy
-seaborn
-matplotlib
+numpy (>= 2.3.4)
+pandas (>= 2.3.3)
+scipy (>= 1.16.2)
+seaborn (>= 0.13.2)
+matplotlib (>= 3.10.7)
 ```
 
 ### R packages (R version 4.5.0)
 ```
-DESeq2
-tidyverse
-ggridges
-dplyr
-ggplot2
-ggVennDiagram
-UpSetR
-ComplexUpset
-argparse
-VennDiagram
+DESeq2 (>= 1.42.1)
+tidyverse (>= 2.0.0)
+ggridges (>= 0.5.7)
+dplyr (>= 1.1.4)
+ggplot2 (>= 4.0.1)
+ggVennDiagram (>= 1.5.7)
+UpSetR (>= 1.4.0)
+ComplexUpset (>= 1.3.3)
+argparse (>= 2.3.1)
+VennDiagram (>= 1.8.2)
 ```
 
 ## Example input data
