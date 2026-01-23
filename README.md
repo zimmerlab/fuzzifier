@@ -1,5 +1,12 @@
 # Fuzzifier
-## Capability
+
+## Subdirectories
+### fuzzifier-*
+Code for the Fuzzifier-* paper (Fuzzifier*: Robust and Sensitive Multi-omics Data Analysis)
+### fuzzifier_ENABLE
+Code for the use case of the ENABLE data (Where Biostatistics meets Bioinformatics: Transparent and Trusted Uncertainty Analysis of Biomedical HT Study Data with Fuzzifier*)
+
+## Capability of Fuzzifier*
 Instead of significant feature identification with statistical tests, we demonstrate methods based on fuzzification and fuzzy logic, which provides a robust and comprehensive categorization of raw values in multiple approaches. Moreover, the results of our fuzzy-based methods extend the results of statistical tests with a higher sensitivity and focus on differences in the value distributions between both conditions in the comparison, while providing further data- and distribution-based validation.
 
 ## Requirements
