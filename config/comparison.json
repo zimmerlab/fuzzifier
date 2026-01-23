@@ -1,9 +1,0 @@
-{
-    "metadata_index_column": "sample",
-    "metadata_cluster_column": "context",
-    "fuzzy_variables": ["NA", "-INF", "INF", "--", "-", "o", "+", "++"],
-    "minimal_absolute_standard_log2FC": 2,
-    "maximal_-log10_standard_padj": 1e-3,
-    "minimal_average_fuzzy_value": 0.5,
-    "minimal_percent_main_fuzzy_set": 0.75
-}

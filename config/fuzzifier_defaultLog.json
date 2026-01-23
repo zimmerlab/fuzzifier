@@ -1,8 +1,0 @@
-{
-    "metadata_index_column": "sample",
-    "metadata_cluster_column": "context",
-    "left_noise_cutoff": "-Infinity",
-    "right_noise_cutoff": "+Infinity",
-    "define_concept_per": "feature",
-    "label_values": ["-Infinity"]
-}
