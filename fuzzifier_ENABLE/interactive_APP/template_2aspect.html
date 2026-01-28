@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Fuzzy Report</title>
+
+        <style>
+            .accordion {
+                background-color: #f1f1f1;
+                color: #444;
+                cursor: pointer;
+                padding: 18px;
+                width: 1000px;
+                text-align: left;
+                border: none;
+                outline: none;
+                transition: 0.5s;
+                font-size: 20px;
+                font-weight: bold;
+            }
+            .active, .accordion:hover {
+                background-color: #f1f1f1;
+            }
+            .panel {
+                padding: 0 18px;
+                width: 1000px;
+                background-color: #ffffff;
+                border: black;
+                display: none;
+                overflow: hidden;
+            }
+            ul li {
+                margin: 5px;
+            }
+            table, th, td {
+                border: 1px solid black;
+                border-collapse: collapse;
+                column-width: 300px;
+            }
+            table { 
+                margin-top: 50px;
+                margin-bottom: 50px;
+            }
+            th, td {
+                height: 40px;
+            }
+            tr {
+                text-align: center;
+                font-size: medium;
+            }
+            tr:nth-child(odd) {
+                background-color: #f1f1f1;
+            }
+            .switch {
+                background-color: lightskyblue;
+                border: 2px solid black;
+                border-radius: 8px;
+                padding: 12px 26px;
+                font-size: 16px;
+                transition-duration: 0.5s;
+            }
+            .switch:hover {
+                background-color: ghostwhite;
+                color: black;
+            }
+            .center {
+                display: block;
+                margin-left: auto;
+                margin-right: auto;
+                width: 80%;
+            }
+            a {
+                text-decoration: none;
+                display: inline-block;
+                padding: 8px 16px;
+            }
+            a:hover {
+                background-color: #ddd;
+                color: black;
+            }
+            .switch {
+                background-color: #f1f1f1;
+                color: "black";
+            }
+            .previous {
+                background-color: #f1f1f1;
+                color: black;
+            }
+            .next {
+                background-color: #f1f1f1;
+                color: black;
+            }
+            .round {
+                border-radius: 50%;
+            }
+            img {
+                margin-left: auto;
+                margin-right: auto;
+            }
+        </style>
+    </head>
+
+    <body>
+        <h1>Fuzzy Report</h1>
+        <button class = "accordion">Input Overview</button>
+        <div class = "panel">
+            <ul>
+                <li>The raw value matrix includes <strong>{{ numRows }}</strong> rows/features and <strong>{{ numCols }}</strong> columns/samples.</li>
+                <li><strong>{{ xLabel }}:</strong></li>
+                <ul>
+                    {% if addNoise_X %}
+                    {% if cutoffLeft_X and cutoffRight_X %}
+                    <li>Crisp values <strong>no larger than {{ minNoise_X }}</strong> and <strong>no smaller than {{ maxNoise_X }}</strong> are regarded as noise.</li>
+                    {% elif cutoffLeft_X %}
+                    <li>Crisp values <strong>no larger than {{ minNoise_X }}</strong> are regarded as noise.</li>
+                    {% elif cutoffRight_X %}
+                    <li>Crisp values <strong>no smaller than {{ maxNoise_X }}</strong> are regarded as noise.</li>
+                    {% endif %}
+                    {% endif %}
+                    <li>Additional categories are defined for specific values ({{ labelStr_X }}), while other raw values are fuzzified according to the fuzzy concept(s).</li>
+                    <table style = "margin-left: auto; margin-right: auto;">
+                    {% for item in crispStats_X %}
+                    <tr>
+                        <td>{{ item.statement }}</td>
+                        <td>{{ item.percentage }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                </ul>
+                <li><strong>{{ yLabel }}:</strong></li>
+                <ul>
+                    {% if addNoise_Y %}
+                    {% if cutoffLeft_Y and cutoffRight_Y %}
+                    <li>Crisp values <strong>no larger than {{ minNoise_Y }}</strong> and <strong>no smaller than {{ maxNoise_Y }}</strong> are regarded as noise.</li>
+                    {% elif cutoffLeft_Y %}
+                    <li>Crisp values <strong>no larger than {{ minNoise_Y }}</strong> are regarded as noise.</li>
+                    {% elif cutoffRight_Y %}
+                    <li>Crisp values <strong>no smaller than {{ maxNoise_Y }}</strong> are regarded as noise.</li>
+                    {% endif %}
+                    {% endif %}
+                    <li>Additional categories are defined for specific values ({{ labelStr_Y }}), while other raw values are fuzzified according to the fuzzy concept(s).</li>
+                    <table style = "margin-left: auto; margin-right: auto;">
+                    {% for item in crispStats_Y %}
+                    <tr>
+                        <td>{{ item.statement }}</td>
+                        <td>{{ item.percentage }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                </ul>
+            </ul>
+        </div>
+        <br>
+
+        {% if pctCompleted_X > 0.99 %}
+        {% if pctCompleted_Y > 0.99 %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: green; font-size: 28px;">&#9787;</span> <span style = "color: green; font-size: 26px;">&#9787;</span></button>
+        {% elif pctCompleted_Y > 0.75 %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: green; font-size: 28px;">&#9787;</span> <span style = "color: gold; font-size: 26px;">&#9787;</span></button>
+        {% else %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: gold; font-size: 28px;">&#9787;</span> <span style = "color: crimson; font-size: 26px;">&#9787;</span></button>
+        {% endif %}
+        {% elif pctCompleted_X > 0.75 %}
+        {% if pctCompleted_Y > 0.99 %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: gold; font-size: 28px;">&#9787;</span> <span style = "color: green; font-size: 26px;">&#9787;</span></button>
+        {% elif pctCompleted_Y > 0.75 %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: gold; font-size: 28px;">&#9787;</span> <span style = "color: gold; font-size: 26px;">&#9787;</span></button>
+        {% else %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: gold; font-size: 28px;">&#9787;</span> <span style = "color: crimson; font-size: 26px;">&#9787;</span></button>
+        {% endif %}
+        {% else %}
+        {% if pctCompleted_Y > 0.99 %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: crimson; font-size: 28px;">&#9787;</span> <span style = "color: green; font-size: 26px;">&#9787;</span></button>
+        {% elif pctCompleted_Y > 0.75 %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: crimson; font-size: 28px;">&#9787;</span> <span style = "color: gold; font-size: 26px;">&#9787;</span></button>
+        {% else %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: crimson; font-size: 28px;">&#9787;</span> <span style = "color: crimson; font-size: 26px;">&#9787;</span></button>
+        {% endif %}
+        {% endif %}
+        <div class = "panel">
+            <ul>
+                <li><strong>{{ xLabel }}:</strong></li>
+                <ul>
+                    {% if conceptStats_X[-1].value == "per feature" %}
+                    <li>One fuzzy concept is defined for each feature in the raw value matrix, using the same parameters for derivation.</li>
+                    {% else %}
+                    <li>One fuzzy concept is defined for all raw values in the matrix.</li>
+                    {% endif %}
+                    <li>In this fuzzification, the fuzzy values of <strong>{{ "{:.2%}".format (pctCompleted_X) }}</strong> fuzzified raw values can sum up to 1.</li>
+                    <table style = "margin-left: auto; margin-right: auto;">
+                    {% for item in conceptStats_X %}
+                    <tr>
+                        <td>{{ item.statement }}</td>
+                        <td>{{ item.value }}</td>
+                    </tr>
+                    {% endfor %}
+                    </table>
+                </ul>
+                <li><strong>{{ yLabel }}:</strong></li>
+                <ul>
+                    {% if conceptStats_Y[-1].value == "per feature" %}
+                    <li>One fuzzy concept is defined for each feature in the raw value matrix, using the same parameters for derivation.</li>
+                    {% else %}
+                    <li>One fuzzy concept is defined for all raw values in the matrix.</li>
+                    {% endif %}
+                    <li>In this fuzzification, the fuzzy values of <strong>{{ "{:.2%}".format (pctCompleted_Y) }}</strong> fuzzified raw values can sum up to 1.</li>
+                    <table style = "margin-left: auto; margin-right: auto;">
+                    {% for item in conceptStats_Y %}
+                    <tr>
+                        <td>{{ item.statement }}</td>
+                        <td>{{ item.value }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                </ul>
+            </ul>
+            <hr>
+            <h3 id = "conceptPlot">Current aspect: {{ xLabel }}</h3>
+            <button class = "switch" id = "toConcept" name = "{{ yLabel }}">Switch</button>
+            <img src = "{{ conceptPlot_X }}" id = "concept" class = "center">
+        </div>
+        <br>
+
+        <button class = "accordion">Main Fuzzy Values and Main Fuzzy Sets</button>
+        <div class = "panel">
+            <ul>
+                <ul>
+                    <li>The main fuzzy value is the highest fuzzy value for one raw value.</li>
+                    <li>The fuzzy set with the main fuzzy value is then its main fuzzy set.</li>
+                    <li>The percentage of raw values in each main fuzzy set is defined as the cardinality.</li>
+                </ul>
+            </ul>
+            <hr>
+            <h3 id = "summaryPlot">Current aspect: {{ xLabel }}</h3>
+            <button class = "switch" id = "toSummary" name = "{{ yLabel }}">Switch</button>
+            <img src = "{{ summaryFV_X }}" id = "summary" class = "center">
+        </div>
+        <br/>
+
+        {% if pctClear_X > 0.5 %}
+        {% if pctClear_Y > 0.5 %}
+        <button class = "accordion">Fuzzy Classification <span style = "color: green; font-size: 28px;">&#9787;</span> <span style = "color: green; font-size: 26px;">&#9787;</span></button>
+        {% elif pctClear_Y > 0.25 %}
+        <button class = "accordion">Fuzzy Classification <span style = "color: green; font-size: 28px;">&#9787;</span> <span style = "color: gold; font-size: 26px;">&#9787;</span></button>
+        {% else %}
+        <button class = "accordion">Fuzzy Classification <span style = "color: gold; font-size: 28px;">&#9787;</span> <span style = "color: crimson; font-size: 26px;">&#9787;</span></button>
+        {% endif %}
+        {% elif pctClear_X > 0.25 %}
+        {% if pctClear_Y > 0.5 %}
+        <button class = "accordion">Fuzzy Concept(s) <span style = "color: gold; font-size: 28px;">&#9787;</span> <span style = "color: green; font-size: 26px;">&#9787;</span></button>
+        {% elif pctClear_Y > 0.25 %}
+        <button class = "accordion">Fuzzy Classification <span style = "color: gold; font-size: 28px;">&#9787;</span> <span style = "color: gold; font-size: 26px;">&#9787;</span></button>
+        {% else %}
+        <button class = "accordion">Fuzzy Classification <span style = "color: gold; font-size: 28px;">&#9787;</span> <span style = "color: crimson; font-size: 26px;">&#9787;</span></button>
+        {% endif %}
+        {% else %}
+        {% if pctClear_Y > 0.5 %}
+        <button class = "accordion">Fuzzy Classification <span style = "color: crimson; font-size: 28px;">&#9787;</span> <span style = "color: green; font-size: 26px;">&#9787;</span></button>
+        {% elif pctClear_Y > 0.25 %}
+        <button class = "accordion">Fuzzy Classification <span style = "color: crimson; font-size: 28px;">&#9787;</span> <span style = "color: gold; font-size: 26px;">&#9787;</span></button>
+        {% else %}
+        <button class = "accordion">Fuzzy Classification <span style = "color: crimson; font-size: 28px;">&#9787;</span> <span style = "color: crimson; font-size: 26px;">&#9787;</span></button>
+        {% endif %}
+        {% endif %}
+        <div class = "panel">
+            <ul>
+                <li>The Gini impurity is modified to quantify separation of clusters based on the fuzzy concept.</li>
+                <ul>
+                    <li>Gini impurity = 0: All clusters belong to the same fuzzy set.</li>
+                    <li>Gini impurity = 1: All clusters may belong to different fuzzy sets.</li>
+                </ul>
+                <li><strong>{{ xLabel }}:</strong></li>
+                <ul>
+                    <li><strong>{{ "{:.2%}".format (pctClear_X) }}</strong> fuzzified raw values have <strong>maximal Gini impurity > 0.5</strong>, assuming that they are clearly assigned to one fuzzy set.</li>
+                </ul>
+                <li><strong>{{ yLabel }}:</strong></li>
+                <ul>
+                    <li><strong>{{ "{:.2%}".format (pctClear_Y) }}</strong> fuzzified raw values have <strong>maximal Gini impurity > 0.5</strong>, assuming that they are clearly assigned to one fuzzy set.</li>
+                </ul>
+            </ul>
+            <hr>
+            <h3 id = "impurityPlot">Current aspect: {{ xLabel }}</h3>
+            <button class = "switch" id = "toImpurity" name = "{{ yLabel }}">Switch</button>
+            <img src = "{{ impurityPlot_X }}" id = "impurity" class = "center">
+        </div>
+        <br>
+
+        <button class = "accordion">Cluster-Specific Features</button>
+        <div class = "panel">
+            <ul>
+                <li>Assume a feature is specific in some clusters, then it is expected to be one level more lowly or highly expressed than in other clusters in comparison to a base level.</li>
+                <li>This expression level is represented by the fuzzy sets here.</li>
+                <li><strong>{{ xLabel }}</strong>: In this fuzzification, {{ numSpecific_X }} cluster-specific features have been found with base level {{ baseLevel_X }}, where</li>
+                <ul>
+                    {% if maxNum_X == 1 %}
+                    <li>each of these features is specific in <strong>no more than {{ maxNum_X }}</strong> cluster,</li>
+                    {% else %}
+                    <li>each of these features is specific in <strong>no more than {{ maxNum_X }}</strong> clusters,</li>
+                    {% endif %}
+                    <li><strong>no less than {{ "{:.1%}".format (minPct_X) }}</strong> of the samples have their main fuzzy values in the highest level,</li>
+                    <li>this average main membership is <strong>no lower than 0.6</strong> over all samples in the corresponding clusters.</li>
+                </ul>
+                <li><strong>{{ yLabel }}</strong>: In this fuzzification, {{ numSpecific_Y }} cluster-specific features have been found with base level {{ baseLevel_Y }}, where</li>
+                <ul>
+                    {% if maxNum_Y == 1 %}
+                    <li>each of these features is specific in <strong>no more than {{ maxNum_Y }}</strong> cluster,</li>
+                    {% else %}
+                    <li>each of these features is specific in <strong>no more than {{ maxNum_Y }}</strong> clusters,</li>
+                    {% endif %}
+                    <li><strong>no less than {{ "{:.1%}".format (minPct_Y) }}</strong> of the samples have their main fuzzy values in the highest level,</li>
+                    <li>this average main membership is <strong>no lower than 0.6</strong> over all samples in the corresponding clusters.</li>
+                </ul>
+            </ul>
+            <hr>
+            <h3 id = "dotPlot">Current aspect: {{ xLabel }}</h3>
+            <button class = "switch" id = "toDot" name = "{{ yLabel }}">Switch</button>
+            <span style = "margin-left: 20px"></span>
+            <a href = "#" class = "previous round" id = "previous">&#8249;</a>
+            <a href = "#" class = "next round" id = "next">&#8250;</a>
+            <br>
+            <img src = "{{ firstDot_X }}" id = "markers" name = "{{ numSpecific_X }}" class = "center">
+        </div>
+        <br>
+
+        <button class = "accordion">Common Cluster-Specific Features</button>
+        <div class = "panel">
+            <ul>
+                <li>There are <strong>{{ numCommonSpecific }}</strong> common cluster-specific features, which are specific in the same cluster(s) for both aspects.</li>
+            </ul>
+            <hr>
+            <img src = "{{ annotVolcano }}" class = "center">
+        </div>
+
+
+        <script>
+            var idx = 0;
+
+            var acc = document.getElementsByClassName ("accordion");
+            for (var i = 0; i < acc.length; i++)
+            {
+                acc[i].addEventListener ("click", function ()
+                {
+                    this.classList.toggle ("active");
+                    var panel = this.nextElementSibling;
+                    if (panel.style.display === "block")
+                    {
+                        panel.style.display = "none";
+                    }
+                    else
+                    {
+                        panel.style.display = "block";
+                    }
+                });
+            }
+
+            document.getElementById ("toConcept").onclick = function ()
+            {
+                var header = document.getElementById ("conceptPlot");
+                var currAspect = header.innerText.split ("Current aspect: ")[1];
+                var nextAspect = this.name;
+                header.innerText = "Current aspect: " + nextAspect; this.name = currAspect;
+                var imgSRC = document.getElementById ("concept").src;
+                imgSRC = imgSRC.split ("/"); imgSRC[imgSRC.length - 2] = nextAspect;
+                document.getElementById ("concept").src = imgSRC.join ("/");
+            };
+
+            document.getElementById ("toSummary").onclick = function ()
+            {
+                var header = document.getElementById ("summaryPlot");
+                var currAspect = header.innerText.split ("Current aspect: ")[1];
+                var nextAspect = this.name;
+                header.innerText = "Current aspect: " + nextAspect; this.name = currAspect;
+                var imgSRC = document.getElementById ("summary").src;
+                imgSRC = imgSRC.split ("/"); imgSRC[imgSRC.length - 2] = nextAspect;
+                document.getElementById ("summary").src = imgSRC.join ("/");
+            };
+
+            document.getElementById ("toImpurity").onclick = function ()
+            {
+                var header = document.getElementById ("impurityPlot");
+                var currAspect = header.innerText.split ("Current aspect: ")[1];
+                var nextAspect = this.name;
+                header.innerText = "Current aspect: " + nextAspect; this.name = currAspect;
+                var imgSRC = document.getElementById ("impurity").src;
+                imgSRC = imgSRC.split ("/"); imgSRC[imgSRC.length - 2] = nextAspect;
+                document.getElementById ("impurity").src = imgSRC.join ("/");
+            };
+
+            document.getElementById ("toDot").onclick = function ()
+            {
+                var header = document.getElementById ("dotPlot");
+                var currAspect = header.innerText.split ("Current aspect: ")[1];
+                var nextAspect = this.name;
+                header.innerText = "Current aspect: " + nextAspect; this.name = currAspect;
+                var imgSRC = document.getElementById ("markers").src;
+                var imgSRC = imgSRC.split ("/");
+                imgSRC[imgSRC.length - 3] = nextAspect; imgSRC[imgSRC.length - 1] = "marker_scatter_1.png";
+                document.getElementById ("markers").src = imgSRC.join ("/");
+                idx = 0;
+            };
+
+            document.getElementById ("previous").onclick = function ()
+            {
+                idx--;
+                var imgSRC = document.getElementById ("markers").src.split ("_").slice (0, -1).join ("_");
+                imgSRC = imgSRC.concat ("_", 50 * idx + 1, ".png"); console.log (imgSRC);
+                var dummy = new Image (); dummy.src = imgSRC;
+                if (dummy.complete)
+                {
+                    document.getElementById ("markers").src = imgSRC;
+                }
+                else
+                {
+                    dummy.onload = () => { document.getElementById ("markers").src = imgSRC; };
+                    dummy.onerror = () => { idx++; };
+                }
+            };
+            document.getElementById ("next").onclick = function ()
+            {
+                idx++;
+                var imgSRC = document.getElementById ("markers").src.split ("_").slice (0, -1).join ("_");
+                imgSRC = imgSRC.concat ("_", 50 * idx + 1, ".png"); console.log (imgSRC);
+                var dummy = new Image (); dummy.src = imgSRC;
+                if (dummy.complete)
+                {
+                    document.getElementById ("markers").src = imgSRC;
+                }
+                else
+                {
+                    dummy.onload = () => { document.getElementById ("markers").src = imgSRC; };
+                    dummy.onerror = () => { idx--; };
+                }
+            };
+        </script>
+    </body>
+</html>
