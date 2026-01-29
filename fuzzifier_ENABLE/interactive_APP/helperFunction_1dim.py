@@ -117,7 +117,7 @@ def fitMode (values, bwFct = 1, useFit = True):
             density = pd.DataFrame ({"value": finite_values, "density": kernel (finite_values)}).sort_values ("value").drop_duplicates ()
             modes = density.iloc[signal.argrelmax (density["density"].to_numpy ())[0]].drop_duplicates ()
             modes.loc["mean"] = {"value": mu, "density": kernel ([mu])[0]}; modes = modes.sort_values ("value")
-        except np.linalg.LinAlgError:
+        except (ValueError, np.linalg.LinAlgError):
             modes = pd.DataFrame ({"value": mu, "density": 0}, index = ["mean"])
         meanIdx = list (modes.index).index ("mean")
         if modes.shape[0] == 1:
@@ -138,16 +138,15 @@ def fitMode (values, bwFct = 1, useFit = True):
         sigma = finite_values.std ()
     if sigma != 0 and round (sigma, 3) == 0:
         sigma = 1e-3
-    return round (mu, 3); round (sigma, 3)
+    return round (mu, 3), round (sigma, 3)
 
 
-def getDefaultConcept (mu, sigma, numFS, valueRange, widthFct = 1, slopeFct = 0.5):
-    coords = [mu + widthFct * (i + overlap) * sigma for i in np.linspace (-numFS, numFS, numFS + 1)
-                  for overlap in [-slopeFct, slopeFct]]
-    concept = np.round ([coords[(2 * k - 2):(2 * k + 2)] for k in range (1, numFS + 1)], 3).tolist ()
-    left = np.floor (min (valueRange[0], concept[0][2])) - 1; right = np.ceil (max (valueRange[1], concept[-1][1])) + 1
-    concept[0][0] = left; concept[0][1] = left; concept[-1][2] = right; concept[-1][3] = right
-    concept[int (numFS / 2)] = [round (mu, 3), round (sigma, 3)]
-    return concept
+def getDefaultConcept (numFS_side):
+    numFS = 2 * numFS_side + 1
+    coords = [i + overlap for i in np.linspace (-numFS, numFS, numFS + 1) for overlap in [-0.5, 0.5]]
+    trap = np.round ([coords[(2 * k - 2):(2 * k + 2)] for k in range (1, numFS + 1)], 3).tolist ()
+    trap[0][0] = trap[0][1]; trap[-1][3] = trap[-1][2]; trap = np.round (trap, 3)
+    gauss = trap[:, [1, 2]].mean (axis = 1)
+    return trap, gauss
     
 
