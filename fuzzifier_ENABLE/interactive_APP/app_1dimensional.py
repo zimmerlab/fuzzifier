@@ -554,12 +554,14 @@ def server (input, output, session):
 
     @render.download (filename = "concept_fixed_parameters.json")
     def download_fixed ():
-        num = numCards_fixed.get (); xRange = rangeGlobal.get ()
+        num = numCards_fixed.get (); xRange = rangeGlobal.get (); labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
         constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
-        basicInfo = {"number_fuzzy_sets": numCards_fixed.get (), "define_concept_per": "matrix",
-                     "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in set (labelValues.get ()) - set (plotRangeGlobal.get ())],
-                     "left_noise_cutoff": constRev.get (noiseCutoffLeft.get (), noiseCutoffLeft.get ()),
-                     "right_noise_cutoff": constRev.get (noiseCutoffRight.get (), noiseCutoffRight.get ())}
+        output = {"ALL": {"number_fuzzy_sets": numCards_fixed.get (),
+                          "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}}
+        if np.isfinite (noiseCutoffLeft.get ()):
+            output["ALL"]["MIN-NOISE"] = noiseCutoffLeft.get ()
+        if np.isfinite (noiseCutoffRight.get ()):
+            output["ALL"]["MAX-NOISE"] = noiseCutoffRight.get ()
         with ui.Progress () as p:
             p.set (message = "Download Running", detail = "This will take a while...")
             concept = dict ()
@@ -573,14 +575,18 @@ def server (input, output, session):
                     elif idx == num:
                         right = max (xRange[1], np.ceil (coords[1]) + 1)
                         coords[2] = right; coords[3] = right
-                    concept[input[f"name{idx}_fixed"] ()] = [[constRev.get (x, x) if not np.isnan (x) else "NA" for x in coords],
-                                                             "trapezoidal", input[f"color{idx}_fixed"] ()]
+                    if any ([~np.isfinite (x) for x in coords]):
+                        output["ALL"]["number_fuzzy_sets"] = 0
+                        break
+                    concept[input[f"name{idx}_fixed"] ()] = [coords, "trapezoidal", input[f"color{idx}_fixed"] ()]
                 else:
                     mu = input[f"center{idx}_fixed"] (); sigma = input[f"width{idx}_fixed"] ()
-                    concept[input[f"name{idx}_fixed"] ()] = [[constRev.get (mu, mu) if not np.isnan (mu) else "NA",
-                                                              constRev.get (sigma, sigma) if not np.isnan (sigma) else "NA"],
-                                                             "Gaussian", input[f"color{idx}_fixed"] ()]
-            output = {"basic_information": basicInfo, "fuzzy_concepts": {"ALL": concept}}
+                    if (not np.isfinite (mu)) or (not np.isfinite (sigma)):
+                        output["ALL"]["number_fuzzy_sets"] = 0
+                        break
+                    concept[input[f"name{idx}_fixed"] ()] = [[mu, sigma], "Gaussian", input[f"color{idx}_fixed"] ()]
+            if output["ALL"]["number_fuzzy_sets"] > 0:
+                output["ALL"].update (concept)
             outputStr = json.dumps (output, indent = 4)
             yield outputStr
         ui.notification_show ("Download Completed", type = "message", duration = 2)
@@ -743,7 +749,7 @@ def server (input, output, session):
 
     @render.download (filename = "concept_width.json")
     def download_width ():
-        num = numCards_width.get (); ticks = pctWidth.get (); concepts = dict ()
+        num = numCards_width.get (); ticks = pctWidth.get ()
         if input.fuzzyBy_width () == "feature":
             featureList = itemList.get ()["feature"]
         if input.fuzzyBy_width () == "dataset":
@@ -757,15 +763,18 @@ def server (input, output, session):
             else:
                 gaussIdx.append (idx)
                 pctConcept.append ([10 * input[f"center{idx}_width"] (), input[f"width{idx}_width"] ()])
-        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
-        basicInfo = {"number_fuzzy_sets": numCards_width.get (), "define_concept_per": input.fuzzyBy_width (),
-                     "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in set (labelValues.get ()) - set (plotRangeGlobal.get ())],
-                     "left_noise_cutoff": constRev.get (noiseCutoffLeft.get (), noiseCutoffLeft.get ()),
-                     "right_noise_cutoff": constRev.get (noiseCutoffRight.get (), noiseCutoffRight.get ())}
+        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}; labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
+        basicInfo = {"number_fuzzy_sets": numCards_width.get (),
+                     "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+        if np.isfinite (noiseCutoffLeft.get ()):
+            basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
+        if np.isfinite (noiseCutoffRight.get ()):
+            basicInfo["MAX-NOISE"] = noiseCutoffRight.get ()
+        output = dict ()
         with ui.Progress () as p:
             p.set (message = "Download Running", detail = "This will take a while...")
             for feature in featureList:
-                centers = list (); concept = list ()
+                centers = list (); concept = list (); featureInfo = basicInfo.copy ()
                 xMin = np.floor (ticks.loc[feature, 0]) - 1; xMax = np.ceil (ticks.loc[feature, 1000]) + 1
                 for i in range (num):
                     if input[f"typeFS{i + 1}_width"] () == "trap":
@@ -775,17 +784,26 @@ def server (input, output, session):
                         elif i == num - 1:
                             coords[2] = xMax; coords[3] = xMax
                         centers.append (sum (coords) / 4)
-                        concept.append ([[constRev.get (x, x) if not np.isnan (x) else "NA" for x in coords], "trapezoidal", colors[i]])
+                        if any ([~np.isfinite (x) for x in coords]):
+                            featureInfo["number_fuzzy_sets"] = 0
+                            break
+                        concept.append ([coords, "trapezoidal", colors[i]])
                     else:
                         centers.append (ticks.loc[feature, int (pctConcept[i][0])])
-                        concept.append ([[constRev.get (centers[-1], centers[-1]) if not np.isnan (centers[-1]) else "NA", 1],
-                                         "Gaussian", colors[i]])
-                widths = estimateSigma (centers, [xMin, xMax])
-                for idx in gaussIdx:
-                    sigma = round (pctConcept[idx - 1][1] * widths[idx], 3)
-                    concept[idx - 1][0][1] = constRev.get (sigma, sigma) if not np.isnan (sigma) else "NA"
-                concepts[feature] = dict (zip (names, concept))
-            outputStr = json.dumps ({"basic_information": basicInfo, "fuzzy_concepts": concepts}, indent = 4)
+                        if not np.isfinite (centers[-1]):
+                            featureInfo["number_fuzzy_sets"] = 0
+                            break
+                        concept.append ([[centers[-1], 1], "Gaussian", colors[i]])
+                if featureInfo["number_fuzzy_sets"] > 0:
+                    widths = estimateSigma (centers, [xMin, xMax])
+                    if all ([np.isfinite (x) for x in widths]):
+                        for idx in gaussIdx:
+                            concept[idx - 1][0][1] = round (pctConcept[idx - 1][1] * widths[idx], 3)
+                        featureInfo.update (dict (zip (names, concept)))
+                    else:
+                        featureInfo["number_fuzzy_sets"] = 0
+                output[feature] = featureInfo.copy ()
+            outputStr = json.dumps (output, indent = 4)
             yield outputStr
         ui.notification_show ("Download Completed", type = "message", duration = 2)
 
@@ -965,15 +983,18 @@ def server (input, output, session):
             else:
                 gaussIdx.append (idx)
                 pctConcept.append ([10 * input[f"center{idx}_prop"] (), input[f"width{idx}_prop"] ()])
-        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
-        basicInfo = {"number_fuzzy_sets": numCards_prop.get (), "define_concept_per": input.fuzzyBy_prop (),
-                     "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in set (labelValues.get ()) - set (plotRangeGlobal.get ())],
-                     "left_noise_cutoff": constRev.get (noiseCutoffLeft.get (), noiseCutoffLeft.get ()),
-                     "right_noise_cutoff": constRev.get (noiseCutoffRight.get (), noiseCutoffRight.get ())}
+        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}; labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
+        basicInfo = {"number_fuzzy_sets": numCards_prop.get (),
+                     "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+        if np.isfinite (noiseCutoffLeft.get ()):
+            basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
+        if np.isfinite (noiseCutoffRight.get ()):
+            basicInfo["MAX-NOISE"] = noiseCutoffRight.get ()
+        output = dict ()
         with ui.Progress () as p:
             p.set (message = "Download Running", detail = "This will take a while...")
             for feature in featureList:
-                centers = list (); concept = list ()
+                centers = list (); concept = list (); featureInfo = basicInfo.copy ()
                 xMin = np.floor (ticks.loc[feature, 0]) - 1; xMax = np.ceil (ticks.loc[feature, 1000]) + 1
                 for i in range (num):
                     if input[f"typeFS{i + 1}_prop"] () == "trap":
@@ -983,16 +1004,25 @@ def server (input, output, session):
                         elif i == num - 1:
                             coords[2] = xMax; coords[3] = xMax
                         centers.append (sum (coords) / 4)
-                        concept.append ([[constRev.get (x, x) if not np.isnan (x) else "NA" for x in coords], "trapezoidal", colors[i]])
+                        if any ([~np.isfinite (x) for x in coords]):
+                            featureInfo["number_fuzzy_sets"] = 0
+                            break
+                        concept.append ([coords, "trapezoidal", colors[i]])
                     else:
                         centers.append (ticks.loc[feature, int (pctConcept[i][0])])
-                        concept.append ([[constRev.get (centers[-1], centers[-1]) if not np.isnan (centers[-1]) else "NA", 1], "Gaussian", colors[i]])
-                widths = estimateSigma (centers, [xMin, xMax])
-                for idx in gaussIdx:
-                    sigma = round (pctConcept[idx - 1][1] * widths[idx - 1], 3)
-                    concept[idx - 1][0][1] = constRev.get (sigma, sigma) if not np.isnan (sigma) else "NA"
-                concepts[feature] = dict (zip (names, concept))
-            output = {"basic_information": basicInfo, "fuzzy_concepts": concepts}
+                        if not np.isfinite (centers[-1]):
+                            featureInfo["number_fuzzy_sets"] = 0
+                            break
+                        concept.append ([[centers[-1], 1], "Gaussian", colors[i]])
+                if featureInfo["number_fuzzy_sets"] > 0:
+                    widths = estimateSigma (centers, [xMin, xMax])
+                    if all ([np.isfinite (x) for x in widths]):
+                        for idx in gaussIdx:
+                            concept[idx - 1][0][1] = round (pctConcept[idx - 1][1] * widths[idx], 3)
+                        featureInfo.update (dict (zip (names, concept)))
+                    else:
+                        featureInfo["number_fuzzy_sets"] = 0
+                output[feature] = featureInfo.copy ()
             outputStr = json.dumps (output, indent = 4)
             yield outputStr
         ui.notification_show ("Download Completed", type = "message", duration = 2)
