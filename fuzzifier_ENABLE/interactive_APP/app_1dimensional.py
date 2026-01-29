@@ -29,7 +29,11 @@ app_ui = ui.page_fluid (
                         )
                     ),
                     ui.card (
-                        ui.input_action_button ("checkInput", "Confirm input and proceed", width = "250px")
+                        ui.layout_columns (
+                            ui.input_action_button ("invertMtx", "Invert matrix", width = "200px"),
+                            ui.input_action_button ("checkInput", "Confirm input and proceed", width = "250px")
+                        )
+                        
                     )
                 ),
                 ui.column (
@@ -117,8 +121,8 @@ app_ui = ui.page_fluid (
                                 ui.input_numeric ("numFS_width", "", value = 3, min = 2, max = 10, step = 1),
                                 ui.input_action_button ("start_width", "Estimate", width = "200px"),
                                 "Direction:",
-                                ui.input_radio_buttons ("fuzzyBy_width", "", choices = {"feature": "per feature", "dataset": "per matrix"},
-                                                        selected = "feature", inline = False),
+                                ui.input_select ("fuzzyBy_width", "", selected = "feature", multiple = False,
+                                                 choices = {"feature": "per feature", "dataset": "per matrix"}),
                                 ui.download_button ("download_width", "Download concept", width = "200px"),
                                 width = 1 / 3
                             ),
@@ -150,8 +154,8 @@ app_ui = ui.page_fluid (
                                 ui.input_numeric ("numFS_prop", "", value = 3, min = 2, max = 10, step = 1),
                                 ui.input_action_button ("start_prop", "Estimate", width = "200px"),
                                 "Direction:",
-                                ui.input_radio_buttons ("fuzzyBy_prop", "", choices = {"feature": "per feature", "dataset": "per matrix"},
-                                                        selected = "feature", inline = False),
+                                ui.input_select ("fuzzyBy_prop", "", selected = "feature", multiple = False,
+                                                 choices = {"feature": "per feature", "dataset": "per matrix"}),
                                 ui.download_button ("download_prop", "Download concept", width = "200px"),
                                 width = 1 / 3
                             ),
@@ -174,8 +178,8 @@ app_ui = ui.page_fluid (
                         ui.sidebar (
                             ui.card (
                                 ui.layout_columns (
-                                    "Band width factor:",
-                                    ui.input_numeric ("bwFactor", "", value = 1, min = 0, max = 2, step = 0.05)
+                                    "Number of fuzzy sets on left/right side:",
+                                    ui.input_numeric ("numFS_default", "", value = 2, min = 1, max = 3, step = 1)
                                 ),
                                 id = "FS0_default"
                             ),
@@ -183,12 +187,12 @@ app_ui = ui.page_fluid (
                         ),
                         ui.card (
                             ui.layout_column_wrap (
-                                "Number of fuzzy sets on left/right side:",
-                                ui.input_numeric ("numFS_default", "", value = 3, min = 1, max = 3, step = 1),
+                                "Band width factor:",
+                                ui.input_numeric ("bwFactor", "", value = 1, min = 0, max = 2, step = 0.05),
                                 ui.input_action_button ("start_default", "Estimate", width = "200px"),
                                 "Direction:",
-                                ui.input_radio_buttons ("fuzzyBy_default", "", choices = {"feature": "per feature", "dataset": "per matrix"},
-                                                        selected = "feature", inline = False),
+                                ui.input_select ("fuzzyBy_default", "", selected = "feature", multiple = False,
+                                                 choices = {"feature": "per feature", "dataset": "per matrix"}),
                                 ui.download_button ("download_default", "Download concept", width = "200px"),
                                 width = 1 / 3
                             ),
@@ -228,11 +232,11 @@ def server (input, output, session):
     concepts_fixed = reactive.value (dict ())
     concepts_width = reactive.value (dict ())
     concepts_prop = reactive.value (dict ())
+    concepts_default = reactive.value (pd.DataFrame (dtype = float))
     numCards_fixed = reactive.value (0)
     numCards_width = reactive.value (0)
     numCards_prop = reactive.value (0)
-    nameFuzzySets = reactive.value ({"label": list (), "fixed": list (), "width": list (), "prop": list ()})
-    idRenameCards = reactive.value (list ())
+    numCards_default = reactive.value (0)
     defaultColors = reactive.value (["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple",
                                      "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan",
                                      "blue", "orange", "green", "red", "purple",
@@ -260,7 +264,6 @@ def server (input, output, session):
             ui.update_numeric ("maxNoiseLevel", min = xMin, max = xMax, value = xMax, step = step)
             ui.update_numeric ("zoom", min = xMin, max = xMax, value = (xMin, xMax), step = step)
         matrix.set (mtx)
-        itemList.set ({"feature": list (mtx.index), "sample": list (mtx.columns)})
 
 
     @reactive.effect
@@ -290,7 +293,8 @@ def server (input, output, session):
 
     @render.data_frame
     def summarizeCrispMtx ():
-        if input.addNoise () and (not tempMatrix.get ().empty):
+        #if input.addNoise () and (not tempMatrix.get ().empty):
+        if not tempMatrix.get ().empty:
             mtx = tempMatrix.get ()
         else:
             mtx = matrix.get ()
@@ -321,7 +325,6 @@ def server (input, output, session):
         xMin = np.floor (mtx.min (axis = None, skipna = True)) - 1
         xMax = np.ceil (mtx.max (axis = None, skipna = True)) + 1
         labelValues.set (labels); rangeGlobal.set ([xMin, xMax])
-        nameFS = nameFuzzySets.get (); nameFS["label"] = names; nameFuzzySets.set (nameFS)
 
 
     @render.plot
@@ -346,6 +349,16 @@ def server (input, output, session):
 
 
     @reactive.effect
+    @reactive.event (input.invertMtx)
+    def _ ():
+        if matrix.get ().empty:
+            return
+        matrix.set (matrix.get ().T)
+        if not tempMatrix.get ().empty:
+            tempMatrix.set (tempMatrix.get ().T)
+
+
+    @reactive.effect
     @reactive.event (input.checkInput)
     def _ ():
         if matrix.get ().empty:
@@ -365,12 +378,12 @@ def server (input, output, session):
             propTicks = mtx.quantile (np.linspace (0, 1, 1001), axis = 1, numeric_only = True).T
             propTicks.loc["ALL"] = mtx.melt ()["value"].dropna ().quantile (np.linspace (0, 1, 1001))
             propTicks = propTicks.round (3).rename (columns = {propTicks.columns[i]: i for i in range (1001)})
-            pctWidth.set (widthTicks); pctProp.set (propTicks)
-            featureList = itemList.get ()["feature"]
+            pctWidth.set (widthTicks); pctProp.set (propTicks); itemList.set ({"feature": list (mtx.index), "sample": list (mtx.columns)})
+            featureList = list (mtx.index)
             ui.update_selectize ("viewFeature_fixed", choices = ["ALL"] + featureList)
             ui.update_selectize ("viewFeature_width", choices = ["ALL"] + featureList)
             ui.update_selectize ("viewFeature_prop", choices = ["ALL"] + featureList)
-            ui.update_selectize ("viewFeature_mode", choices = ["ALL"] + featureList)
+            ui.update_selectize ("viewFeature_default", choices = ["ALL"] + featureList)
             ui.notification_show ("Crisp Value Matrix Done", type = "message", duration = 1.5)
 
 
@@ -480,11 +493,11 @@ def server (input, output, session):
                     ui.panel_conditional (
                         f"input.typeFS{idx}_fixed === 'gauss'",
                         ui.layout_columns (
-                            "Mu:",
+                            "Center:",
                             ui.input_numeric (f"center{idx}_fixed", "", step = step, min = xMin, max = xMax, value = gauss[i, 0])
                         ),
                         ui.layout_columns (
-                            "Sigma:",
+                            "Width:",
                             ui.input_numeric (f"width{idx}_fixed", "", step = step, min = 0, max = width, value = gauss[i, 1])
                         )
                     ),
@@ -494,7 +507,6 @@ def server (input, output, session):
                 selector = f"#FS{i}_fixed", where = "afterEnd", multiple = False, immediate = False
             )
         numCards_fixed.set (currNum)
-        nameFS = nameFuzzySets.get (); nameFS["fixed"] = [f"FS{i}" for i in range (1, currNum + 1)]; nameFuzzySets.set (nameFS)
 
 
     @render.plot
@@ -658,11 +670,11 @@ def server (input, output, session):
                     ui.panel_conditional (
                         f"input.typeFS{idx}_width === 'gauss'",
                         ui.layout_columns (
-                            "Mu (%):",
+                            "Center (%):",
                             ui.input_numeric (f"center{idx}_width", "", step = 0.1, min = 0, max = 100, value = gauss[i])
                         ),
                         ui.layout_columns (
-                            "Sigma scaling factor:",
+                            "Width scaling factor:",
                             ui.input_numeric (f"width{idx}_width", "", step = 0.1, min = 0, max = 2, value = 1)
                         )
                     ),
@@ -672,7 +684,6 @@ def server (input, output, session):
                 selector = f"#FS{i}_width", where = "afterEnd", multiple = False, immediate = False
             )
         numCards_width.set (currNum)
-        nameFS = nameFuzzySets.get (); nameFS["width"] = [f"FS{i}" for i in range (1, currNum + 1)]; nameFuzzySets.set (nameFS)
 
 
     @render.plot
@@ -721,9 +732,9 @@ def server (input, output, session):
                 widths = estimateSigma (centers, valueRange)
             for idx in range (1, num + 1):
                 if input[f"typeFS{idx}_width"] () == "trap":
+                    a = input[f"coord{idx}_a_width"] (); b = input[f"coord{idx}_b_width"] ()
+                    c = input[f"coord{idx}_c_width"] (); d = input[f"coord{idx}_d_width"] ()
                     try:
-                        a = input[f"coord{idx}_a_width"] (); b = input[f"coord{idx}_b_width"] ()
-                        c = input[f"coord{idx}_c_width"] (); d = input[f"coord{idx}_d_width"] ()
                         if idx == 1:
                             params = [valueRange[0], valueRange[0], ticks.loc[feature, int (10 * c)], ticks.loc[feature, int (10 * d)]]
                         elif idx == num:
@@ -739,7 +750,7 @@ def server (input, output, session):
                         pass
                 else:
                     try:
-                        mu = ticks.loc[feature, int (10 * input[f"center{idx}_width"] ())]; sigma = input[f"width{idx}_width"] () * widths[idx]
+                        mu = ticks.loc[feature, int (10 * input[f"center{idx}_width"] ())]; sigma = input[f"width{idx}_width"] () * widths[idx - 1]
                         ax2.plot (xDummy, np.exp (-(xDummy - mu) ** 2 / (2 * sigma ** 2)), color = input[f"color{idx}_width"] (), linewidth = 2)
                     except (KeyError, TypeError):
                         pass
@@ -764,8 +775,7 @@ def server (input, output, session):
                 gaussIdx.append (idx)
                 pctConcept.append ([10 * input[f"center{idx}_width"] (), input[f"width{idx}_width"] ()])
         constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}; labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
-        basicInfo = {"number_fuzzy_sets": numCards_width.get (),
-                     "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+        basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
         if np.isfinite (noiseCutoffLeft.get ()):
             basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
         if np.isfinite (noiseCutoffRight.get ()):
@@ -778,7 +788,7 @@ def server (input, output, session):
                 xMin = np.floor (ticks.loc[feature, 0]) - 1; xMax = np.ceil (ticks.loc[feature, 1000]) + 1
                 for i in range (num):
                     if input[f"typeFS{i + 1}_width"] () == "trap":
-                        coords = ticks.loc[feature, pctConcept[i]].tolist ()
+                        coords = ticks.loc[feature, pctConcept[i]].round (3).tolist ()
                         if i == 0:
                             coords[0] = xMin; coords[1] = xMin
                         elif i == num - 1:
@@ -789,16 +799,16 @@ def server (input, output, session):
                             break
                         concept.append ([coords, "trapezoidal", colors[i]])
                     else:
-                        centers.append (ticks.loc[feature, int (pctConcept[i][0])])
+                        centers.append (round (ticks.loc[feature, int (pctConcept[i][0])], 3))
                         if not np.isfinite (centers[-1]):
                             featureInfo["number_fuzzy_sets"] = 0
                             break
                         concept.append ([[centers[-1], 1], "Gaussian", colors[i]])
-                if featureInfo["number_fuzzy_sets"] > 0:
+                if featureInfo["number_fuzzy_sets"] == num:
                     widths = estimateSigma (centers, [xMin, xMax])
                     if all ([np.isfinite (x) for x in widths]):
                         for idx in gaussIdx:
-                            concept[idx - 1][0][1] = round (pctConcept[idx - 1][1] * widths[idx], 3)
+                            concept[idx - 1][0][1] = round (pctConcept[idx - 1][1] * widths[idx - 1], 3)
                         featureInfo.update (dict (zip (names, concept)))
                     else:
                         featureInfo["number_fuzzy_sets"] = 0
@@ -839,7 +849,7 @@ def server (input, output, session):
             ui.remove_ui (selector = f"#FS{idx}_prop", multiple = False, immediate = False)
         for i in range (min (currNum, num)):
             idx = i + 1
-            ui.update_text (f"name{idx}_prop", value = f"FS{i}")
+            ui.update_text (f"name{idx}_prop", value = f"FS{idx}")
             ui.update_select (f"typeFS{idx}_prop", selected = "trap")
             ui.update_numeric (f"coord{idx}_a_prop", value = trap[i, 0]); ui.update_numeric (f"coord{idx}_b_prop", value = trap[i, 1])
             ui.update_numeric (f"coord{idx}_c_prop", value = trap[i, 2]); ui.update_numeric (f"coord{idx}_d_prop", value = trap[i, 3])
@@ -875,11 +885,11 @@ def server (input, output, session):
                     ui.panel_conditional (
                         f"input.typeFS{idx}_prop === 'gauss'",
                         ui.layout_columns (
-                            "Mu (%):",
+                            "Center (%):",
                             ui.input_numeric (f"center{idx}_prop", "", step = 0.1, min = 0, max = 100, value = gauss[i])
                         ),
                         ui.layout_columns (
-                            "Sigma scaling factor:",
+                            "Width scaling factor:",
                             ui.input_numeric (f"width{idx}_prop", "", step = 0.1, min = 0, max = 2, value = 1)
                         )
                     ),
@@ -889,7 +899,6 @@ def server (input, output, session):
                 selector = f"#FS{i}_prop", where = "afterEnd", multiple = False, immediate = False
             )
         numCards_prop.set (currNum)
-        nameFS = nameFuzzySets.get (); nameFS["prop"] = [f"FS{i}" for i in range (1, currNum + 1)]; nameFuzzySets.set (nameFS)
 
 
     @render.plot
@@ -927,23 +936,21 @@ def server (input, output, session):
                 for idx in range (1, num + 1):
                     if input[f"typeFS{idx}_prop"] () == "trap":
                         if idx == 1:
-                            coords = ticks.loc[feature, [int (10 * input[f"coord{idx}_c_prop"] ()), int (10 * input[f"coord{idx}_d_prop"] ())]]
-                            centers.append ((valueRange[0] + coords.sum ()) / 3)
+                            coords = ticks.loc[feature, [0, 0, int (10 * input[f"coord{idx}_c_prop"] ()), int (10 * input[f"coord{idx}_d_prop"] ())]]
                         elif idx == num:
-                            coords = ticks.loc[feature, [int (10 * input[f"coord{idx}_a_prop"] ()), int (10 * input[f"coord{idx}_b_prop"] ())]]
-                            centers.append ((coords.sum () + valueRange[1]) / 3)
+                            coords = ticks.loc[feature, [int (10 * input[f"coord{idx}_a_prop"] ()), int (10 * input[f"coord{idx}_b_prop"] ()), 1000, 1000]]
                         else:
                             coords = ticks.loc[feature, [int (10 * input[f"coord{idx}_a_prop"] ()), int (10 * input[f"coord{idx}_b_prop"] ()),
                                                          int (10 * input[f"coord{idx}_c_prop"] ()), int (10 * input[f"coord{idx}_d_prop"] ())]]
-                            centers.append (coords.mean ())
+                        centers.append (coords.mean ())
                     else:
                         centers.append (ticks.loc[feature, int (10 * input[f"center{idx}_prop"] ())])
                 widths = estimateSigma (centers, valueRange)
             for idx in range (1, num + 1):
                 if input[f"typeFS{idx}_prop"] () == "trap":
+                    a = input[f"coord{idx}_a_prop"] (); b = input[f"coord{idx}_b_prop"] ()
+                    c = input[f"coord{idx}_c_prop"] (); d = input[f"coord{idx}_d_prop"] ()
                     try:
-                        a = input[f"coord{idx}_a_prop"] (); b = input[f"coord{idx}_b_prop"] ()
-                        c = input[f"coord{idx}_c_prop"] (); d = input[f"coord{idx}_d_prop"] ()
                         if idx == 1:
                             params = [valueRange[0], valueRange[0], ticks.loc[feature, int (10 * c)], ticks.loc[feature, int (10 * d)]]
                         elif idx == num:
@@ -959,7 +966,7 @@ def server (input, output, session):
                         pass
                 else:
                     try:
-                        mu = ticks.loc[feature, int (10 * input[f"center{idx}_prop"] ())]; sigma = input[f"width{idx}_prop"] () * widths[idx]
+                        mu = ticks.loc[feature, int (10 * input[f"center{idx}_prop"] ())]; sigma = input[f"width{idx}_prop"] () * widths[idx - 1]
                         ax2.plot (xDummy, np.exp (-(xDummy - mu) ** 2 / (2 * sigma ** 2)), color = input[f"color{idx}_prop"] (), linewidth = 2)
                     except (KeyError, TypeError):
                         pass
@@ -969,7 +976,7 @@ def server (input, output, session):
 
     @render.download (filename = "concept_proportion.json")
     def download_prop ():
-        num = numCards_prop.get (); ticks = pctProp.get (); concepts = dict ()
+        num = numCards_prop.get (); ticks = pctProp.get ()
         if input.fuzzyBy_prop () == "feature":
             featureList = itemList.get ()["feature"]
         if input.fuzzyBy_prop () == "dataset":
@@ -984,8 +991,7 @@ def server (input, output, session):
                 gaussIdx.append (idx)
                 pctConcept.append ([10 * input[f"center{idx}_prop"] (), input[f"width{idx}_prop"] ()])
         constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}; labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
-        basicInfo = {"number_fuzzy_sets": numCards_prop.get (),
-                     "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+        basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
         if np.isfinite (noiseCutoffLeft.get ()):
             basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
         if np.isfinite (noiseCutoffRight.get ()):
@@ -998,7 +1004,7 @@ def server (input, output, session):
                 xMin = np.floor (ticks.loc[feature, 0]) - 1; xMax = np.ceil (ticks.loc[feature, 1000]) + 1
                 for i in range (num):
                     if input[f"typeFS{i + 1}_prop"] () == "trap":
-                        coords = ticks.loc[feature, pctConcept[i]].tolist ()
+                        coords = ticks.loc[feature, pctConcept[i]].round (3).tolist ()
                         if i == 0:
                             coords[0] = xMin; coords[1] = xMin
                         elif i == num - 1:
@@ -1009,16 +1015,238 @@ def server (input, output, session):
                             break
                         concept.append ([coords, "trapezoidal", colors[i]])
                     else:
-                        centers.append (ticks.loc[feature, int (pctConcept[i][0])])
+                        centers.append (round (ticks.loc[feature, int (pctConcept[i][0])], 3))
                         if not np.isfinite (centers[-1]):
                             featureInfo["number_fuzzy_sets"] = 0
                             break
                         concept.append ([[centers[-1], 1], "Gaussian", colors[i]])
-                if featureInfo["number_fuzzy_sets"] > 0:
+                if featureInfo["number_fuzzy_sets"] == num:
                     widths = estimateSigma (centers, [xMin, xMax])
                     if all ([np.isfinite (x) for x in widths]):
                         for idx in gaussIdx:
-                            concept[idx - 1][0][1] = round (pctConcept[idx - 1][1] * widths[idx], 3)
+                            concept[idx - 1][0][1] = round (pctConcept[idx - 1][1] * widths[idx - 1], 3)
+                        featureInfo.update (dict (zip (names, concept)))
+                    else:
+                        featureInfo["number_fuzzy_sets"] = 0
+                output[feature] = featureInfo.copy ()
+            outputStr = json.dumps (output, indent = 4)
+            yield outputStr
+        ui.notification_show ("Download Completed", type = "message", duration = 2)
+
+
+    @reactive.effect
+    @reactive.event (input.start_default)
+    def _ ():
+        mtx = matrix.get ().replace (labelValues.get (), np.nan); bwFct = input.bwFactor ()
+        if mtx.empty:
+            return
+        with ui.Progress () as p:
+            p.set (message = "Deriving", detail = "This will take a while...")
+            fit = pd.DataFrame (columns = ["mu", "sigma"], dtype = float)
+            for feature in mtx.index:
+                fit.loc[feature] = dict (zip (["mu", "sigma"], fitMode (mtx.loc[feature], bwFct = bwFct, useFit = (bwFct > 0))))
+            mtx = mtx.melt ()["value"].dropna ()
+            fit.loc["ALL"] = dict (zip (["mu", "sigma"], fitMode (mtx, bwFct = bwFct, useFit = False)))
+            concepts_default.set (fit.round (3))
+        ui.notification_show ("Derivation Completed", type = "message", duration = 2)
+    
+
+    @reactive.effect
+    def _ ():
+        mtx = matrix.get ()
+        if mtx.empty:
+            return
+        colorCode = defaultColorCodes.get (); colorDict = dict (zip (colorCode, defaultColors.get ()))
+        num = numCards_default.get (); numSide = input.numFS_default (); currNum = 2 * numSide + 1
+        trap, gauss = getDefaultConcept (numSide)
+        for i in range (currNum, num):
+            idx = i + 1
+            ui.remove_ui (selector = f"#FS{idx}_default", multiple = False, immediate = False)
+        for i in range (min (currNum, num)):
+            idx = i + 1
+            ui.update_text (f"name{idx}_default", value = f"FS{idx}")
+            ui.update_select (f"typeFS{idx}_default", choices = {"trap": "trapezoidal", "gauss": "Gaussian"}, selected = "trap")
+            ui.update_numeric (f"coord{idx}_a_default", value = trap[i, 0]); ui.update_numeric (f"coord{idx}_b_default", value = trap[i, 1])
+            ui.update_numeric (f"coord{idx}_c_default", value = trap[i, 2]); ui.update_numeric (f"coord{idx}_d_default", value = trap[i, 3])
+            ui.update_numeric (f"center{idx}_default", step = 0.1, min = -10, max = 10, value = gauss[i])
+            ui.update_numeric (f"width{idx}_default", value = 1)
+            ui.update_select (f"color{idx}_default", selected = colorCode[i])
+        for i in range (num, currNum):
+            idx = i + 1
+            ui.insert_ui (
+                ui.card (
+                    ui.card_header (f"Fuzzy Set {idx}"),
+                    ui.input_text (f"name{idx}_default", "", value = f"FS{idx}"),
+                    ui.input_select (f"typeFS{idx}_default", "", choices = {"trap": "trapezoidal", "gauss": "Gaussian"}, selected = "trap",
+                                     multiple = False),
+                    ui.panel_conditional (
+                        f"input.typeFS{idx}_default === 'trap'",
+                        ui.layout_columns (
+                            "(left end - mu) / sigma:",
+                            ui.input_numeric (f"coord{idx}_a_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 0])
+                        ),
+                        ui.layout_columns (
+                            "(left corner - mu) / sigma:",
+                            ui.input_numeric (f"coord{idx}_b_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 1])
+                        ),
+                        ui.layout_columns (
+                            "(right corner - mu) / sigma:",
+                            ui.input_numeric (f"coord{idx}_c_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 2])
+                        ),
+                        ui.layout_columns (
+                            "(right end - mu) / sigma:",
+                            ui.input_numeric (f"coord{idx}_d_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 3])
+                        )
+                    ),
+                    ui.panel_conditional (
+                        f"input.typeFS{idx}_default === 'gauss'",
+                        ui.layout_columns (
+                            "(center - mu) / sigma:",
+                            ui.input_numeric (f"center{idx}_default", "", step = 0.1, min = -10, max = 10, value = gauss[i])
+                        ),
+                        ui.layout_columns (
+                            "Width scaling factor:",
+                            ui.input_numeric (f"width{idx}_default", "", step = 0.1, min = 0, max = 2, value = 1)
+                        )
+                    ),
+                    ui.input_select (f"color{idx}_default", "", choices = colorDict, selected = colorCode[i], multiple = False),
+                    id = f"FS{idx}_default"
+                ),
+                selector = f"#FS{i}_default", where = "afterEnd", multiple = False, immediate = False
+            )
+        ui.update_select (f"typeFS{numSide + 1}_default", choices = {"gauss": "Gaussian"}, selected = "gauss")
+        ui.update_numeric (f"center{numSide + 1}_default", min = gauss[numSide], max = gauss[numSide], step = 0)
+        numCards_default.set (currNum)
+
+
+    @render.plot
+    def globalDist_default ():
+        mtx = matrix.get (); fit = concepts_default.get (); feature = input.viewFeature_default ()
+        if mtx.empty or len (plotRangeGlobal.get ()) != 2:
+            return
+        mtx = mtx.replace (labelValues.get () + [-np.inf, np.inf], np.nan)
+        fig, ax = plt.subplots (1, figsize = (8, 5))
+        if feature == "ALL":
+            pltData = mtx.melt ()["value"]; pctUnlabelled = "{:.1%}".format (len (pltData.dropna ()) / len (pltData))
+            ax.hist (pltData.dropna (), bins = 50, color = "lightgray")
+            del pltData
+        else:
+            try:
+                pltData = mtx.loc[feature]; pctUnlabelled = "{:.1%}".format (len (pltData.dropna ()) / len (pltData))
+                ax.hist (pltData.dropna (), bins = 50, color = "lightgray")
+                del pltData
+            except KeyError:
+                pctUnlabelled = "0.0%"
+        ax.set_xlim (plotRangeGlobal.get ()); ax.set_title (f"unlabelled values - {pctUnlabelled}", size = 15)
+        ax.tick_params (axis = "both", which = "major", labelsize = 8)
+        ax.set_xlabel ("raw value", size = 10)
+        ax.set_ylabel ("number of unlabelled values", size = 10)
+        num = numCards_default.get (); valueRange = rangeGlobal.get ()
+        xDummy = np.linspace (*valueRange, 1000)
+        if (not fit.empty) and num > 0 and len (valueRange) == 2:
+            feature = "ALL" if input.fuzzyBy_default () == "dataset" else feature
+            mu, sigma = fit.loc[feature]
+            ax2 = ax.twinx ()
+            ax2.set_xlim (plotRangeGlobal.get ()); ax2.set_ylim ((0, 1.05))
+            ax2.tick_params (axis = "y", which = "major", labelsize = 8)
+            ax2.set_xlabel ("raw value", size = 10); ax2.set_ylabel ("fuzzy value", size = 10)
+            widths = [sigma] * num
+            if sum ([input[f"typeFS{i}_default"] () == "gauss" for i in range (1, num + 1)]) > 1:
+                centers = list ()
+                for idx in range (1, num + 1):
+                    if input[f"typeFS{idx}_default"] () == "trap":
+                        a = mu + sigma * input[f"coord{idx}_a_default"] (); b = mu + sigma * input[f"coord{idx}_b_default"] ()
+                        c = mu + sigma * input[f"coord{idx}_c_default"] (); d = mu + sigma * input[f"coord{idx}_d_default"] ()
+                        if idx == 1:
+                            xMin = np.floor (min (valueRange[0], c)) - 1; coords = [xMin, xMin, c, d]
+                        elif idx == num:
+                            xMax = np.ceil (max (valueRange[1], b)) + 1; coords = [a, b, xMax, xMax]
+                        else:
+                            coords = [a, b, c, d]
+                        centers.append (sum (coords) / 4)
+                    else:
+                        centers.append (mu + sigma * input[f"center{idx}_default"] ())
+                widths = estimateSigma (centers, valueRange); widths[input.numFS_default ()] = sigma
+            for idx in range (1, num + 1):
+                if input[f"typeFS{idx}_default"] () == "trap":
+                    a = mu + sigma * input[f"coord{idx}_a_default"] (); b = mu + sigma * input[f"coord{idx}_b_default"] ()
+                    c = mu + sigma * input[f"coord{idx}_c_default"] (); d = mu + sigma * input[f"coord{idx}_d_default"] ()
+                    if idx == 1:
+                        xMin = np.floor (min (valueRange[0], c)) - 1
+                        params = [xMin, xMin, c, d]
+                    elif idx == num:
+                        xMax = np.ceil (max (valueRange[1], b))
+                        params = [a, b, xMax, xMax]
+                    else:
+                        params = [a, b, c, d]
+                    lines = [(params[0], params[1]), (0, 1), input[f"color{idx}_default"] (),
+                             (params[1], params[2]), (1, 1), input[f"color{idx}_default"] (),
+                             (params[2], params[3]), (1, 0), input[f"color{idx}_default"] ()]
+                    ax2.plot (*lines, linewidth = 2)
+                else:
+                    center = mu + sigma * input[f"center{idx}_default"] (); width = input[f"width{idx}_default"] () * widths[idx - 1]
+                    ax2.plot (xDummy, np.exp (-(xDummy - center) ** 2 / (2 * width ** 2)), color = input[f"color{idx}_default"] (), linewidth = 2)
+        fig.tight_layout ()
+        return fig
+
+
+    @render.download (filename = "concept_default.json")
+    def download_default ():
+        num = numCards_default.get (); fit = concepts_default.get ()
+        if input.fuzzyBy_default () == "feature":
+            featureList = itemList.get ()["feature"]
+        if input.fuzzyBy_default () == "dataset":
+            featureList = ["ALL"]
+        names = list (); colors = list (); zConcept = list (); gaussIdx = list ()
+        for idx in range (1, num + 1):
+            names.append (input[f"name{idx}_default"] ()); colors.append (input[f"color{idx}_default"] ())
+            if input[f"typeFS{idx}_default"] () == "trap":
+                zConcept.append ([input[f"coord{idx}_a_default"] (), input[f"coord{idx}_b_default"] (),
+                                  input[f"coord{idx}_c_default"] (), input[f"coord{idx}_d_default"] ()])
+            else:
+                gaussIdx.append (idx)
+                zConcept.append ([input[f"center{idx}_default"] (), input[f"width{idx}_default"] ()])
+        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}; labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
+        basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+        if np.isfinite (noiseCutoffLeft.get ()):
+            basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
+        if np.isfinite (noiseCutoffRight.get ()):
+            basicInfo["MAX-NOISE"] = noiseCutoffRight.get ()
+        allRanges = matrix.get ().replace (labelValues.get (), np.nan)
+        allRanges = pd.DataFrame ({"min": allRanges.min (axis = 1, skipna = True), "max": allRanges.max (axis = 1, skipna = True)})
+        allRanges = allRanges.replace (np.nan, 0); allRanges.loc["ALL"] = dict (zip (["min", "max"], rangeGlobal.get ()))
+        output = dict ()
+        with ui.Progress () as p:
+            p.set (message = "Download Running", detail = "This will take a while...")
+            for feature in featureList:
+                mu, sigma = fit.loc[feature]
+                centers = list (); concept = list (); featureInfo = basicInfo.copy ()
+                for i in range (num):
+                    if input[f"typeFS{i + 1}_default"] () == "trap":
+                        coords = [round (mu + sigma * zConcept[i][0], 3), round (mu + sigma * zConcept[i][1], 3),
+                                  round (mu + sigma * zConcept[i][2], 3), round (mu + sigma * zConcept[i][3], 3)]
+                        if i == 0:
+                            xMin = np.floor (min (allRanges.loc[feature, "min"], coords[2]))
+                            coords[0] = xMin; coords[1] = xMin
+                        elif i == num - 1:
+                            xMax = np.ceil (max (allRanges.loc[feature, "max"], coords[1]))
+                            coords[2] = xMax; coords[3] = xMax
+                        centers.append (sum (coords) / 4)
+                        if any ([~np.isfinite (x) for x in coords]):
+                            featureInfo["number_fuzzy_sets"] = 0
+                            break
+                        concept.append ([coords, "trapezoidal", colors[i]])
+                    else:
+                        centers.append (round (mu + sigma * zConcept[i][0], 3))
+                        if not np.isfinite (centers[-1]):
+                            featureInfo["number_fuzzy_sets"] = 0
+                            break
+                        concept.append ([[centers[-1], 1], "Gaussian", colors[i]])
+                if featureInfo["number_fuzzy_sets"] == num:
+                    widths = estimateSigma (centers, [xMin, xMax]); widths[int (num / 2)] = sigma
+                    if all ([np.isfinite (x) and x > 0 for x in widths]):
+                        for idx in gaussIdx:
+                            concept[idx - 1][0][1] = round (zConcept[idx - 1][1] * widths[idx - 1], 3)
                         featureInfo.update (dict (zip (names, concept)))
                     else:
                         featureInfo["number_fuzzy_sets"] = 0
