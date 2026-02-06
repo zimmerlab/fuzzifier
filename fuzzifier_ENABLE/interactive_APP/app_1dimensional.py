@@ -468,25 +468,26 @@ def server (input, output, session):
             idx = i + 1
             ui.insert_ui (
                 ui.card (
+                    f"Fuzzy Set {idx}",
                     ui.input_text (f"name{idx}_fixed", "", value = f"FS{idx}"),
                     ui.input_select (f"typeFS{idx}_fixed", "", choices = {"trap": "trapezoidal", "gauss": "Gaussian"}, selected = "trapezoidal",
                                      multiple = False),
                     ui.panel_conditional (
                         f"input.typeFS{idx}_fixed === 'trap'",
                         ui.layout_columns (
-                            "Left end:",
+                            "a:",
                             ui.input_numeric (f"coord{idx}_a_fixed", "", step = step, min = xMin, max = xMax, value = trap[i, 0])
                         ),
                         ui.layout_columns (
-                            "Left corner:",
+                            "b:",
                             ui.input_numeric (f"coord{idx}_b_fixed", "", step = step, min = 0, max = width, value = trap[i, 1])
                         ),
                         ui.layout_columns (
-                            "Right corner:",
+                            "c:",
                             ui.input_numeric (f"coord{idx}_c_fixed", "", step = step, min = xMin, max = xMax, value = trap[i, 2])
                         ),
                         ui.layout_columns (
-                            "Right end:",
+                            "d:",
                             ui.input_numeric (f"coord{idx}_d_fixed", "", step = step, min = 0, max = width, value = trap[i, 3])
                         )
                     ),
@@ -651,19 +652,19 @@ def server (input, output, session):
                     ui.panel_conditional (
                         f"input.typeFS{idx}_width === 'trap'",
                         ui.layout_columns (
-                            "Left end (%):",
+                            "a (%):",
                             ui.input_numeric (f"coord{idx}_a_width", "", step = 0.1, min = 0, max = 100, value = trap[i, 0])
                         ),
                         ui.layout_columns (
-                            "Left corner (%):",
+                            "b (%):",
                             ui.input_numeric (f"coord{idx}_b_width", "", step = 0.1, min = 0, max = 100, value = trap[i, 1])
                         ),
                         ui.layout_columns (
-                            "Right corner (%)",
+                            "c (%)",
                             ui.input_numeric (f"coord{idx}_c_width", "", step = 0.1, min = 0, max = 100, value = trap[i, 2])
                         ),
                         ui.layout_columns (
-                            "Right end (%)",
+                            "d (%)",
                             ui.input_numeric (f"coord{idx}_d_width", "", step = 0.1, min = 0, max = 100, value = trap[i, 3])
                         )
                     ),
@@ -866,19 +867,19 @@ def server (input, output, session):
                     ui.panel_conditional (
                         f"input.typeFS{idx}_prop === 'trap'",
                         ui.layout_columns (
-                            "Left end (%):",
+                            "a (%):",
                             ui.input_numeric (f"coord{idx}_a_prop", "", step = 0.1, min = 0, max = 100, value = trap[i, 0])
                         ),
                         ui.layout_columns (
-                            "Left corner (%):",
+                            "b (%):",
                             ui.input_numeric (f"coord{idx}_b_prop", "", step = 0.1, min = 0, max = 100, value = trap[i, 1])
                         ),
                         ui.layout_columns (
-                            "Right corner (%):",
+                            "c (%):",
                             ui.input_numeric (f"coord{idx}_c_prop", "", step = 0.1, min = 0, max = 100, value = trap[i, 2])
                         ),
                         ui.layout_columns (
-                            "Right end (%):",
+                            "d (%):",
                             ui.input_numeric (f"coord{idx}_d_prop", "", step = 0.1, min = 0, max = 100, value = trap[i, 3])
                         )
                     ),
@@ -1082,19 +1083,19 @@ def server (input, output, session):
                     ui.panel_conditional (
                         f"input.typeFS{idx}_default === 'trap'",
                         ui.layout_columns (
-                            "(left end - mu) / sigma:",
+                            "(a - mu) / sigma:",
                             ui.input_numeric (f"coord{idx}_a_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 0])
                         ),
                         ui.layout_columns (
-                            "(left corner - mu) / sigma:",
+                            "(b - mu) / sigma:",
                             ui.input_numeric (f"coord{idx}_b_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 1])
                         ),
                         ui.layout_columns (
-                            "(right corner - mu) / sigma:",
+                            "(c - mu) / sigma:",
                             ui.input_numeric (f"coord{idx}_c_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 2])
                         ),
                         ui.layout_columns (
-                            "(right end - mu) / sigma:",
+                            "(d - mu) / sigma:",
                             ui.input_numeric (f"coord{idx}_d_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 3])
                         )
                     ),
