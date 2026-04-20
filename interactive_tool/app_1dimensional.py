@@ -99,7 +99,7 @@ app_ui = ui.page_fluid (
                                     "Direction:",
                                     ui.input_select ("fuzzyBy_cons", "", selected = "feature", multiple = False,
                                                      choices = {"feature": "per feature", "dataset": "per matrix"}),
-                                    ui.download_button ("download_cons", "Download concept", width = "200px"),
+                                    ui.div (),
                                     width = 1 / 3
                                 ),
                                 height = "150px"
@@ -142,7 +142,7 @@ app_ui = ui.page_fluid (
                                     "Direction:",
                                     ui.input_select ("fuzzyBy_default", "", selected = "feature", multiple = False,
                                                      choices = {"feature": "per feature", "dataset": "per matrix"}),
-                                    ui.download_button ("download_default", "Download concept", width = "200px"),
+                                    ui.div (),
                                     width = 1 / 3
                                 ),
                                 height = "150px"
@@ -164,6 +164,34 @@ app_ui = ui.page_fluid (
                             height = "800px"
                         )
                     )
+                )
+            ),
+            ui.card (
+                "Download Fuzzy Concepts",
+                ui.div (
+                    height = "20px"
+                ),
+                ui.layout_column_wrap (
+                    "Download fuzzy concepts defined by:",
+                    ui.input_radio_buttons ("downloadOption", "", choices = {"cons": "constraints", "default": "default fuzzification"},
+                                            selected = "cons", inline = True),
+                    ui.div (),
+                    "Default name for matrix-wise fuzzy concept:",
+                    ui.input_text ("defaultName", "", value = "ALL", placeholder = "ALL", spellcheck = False),
+                    ui.input_action_button ("uniqueName", "Check existence", width = "200px"),
+                    width = 1 / 3
+                ),
+                ui.hr (),
+                ui.layout_column_wrap (
+                    ui.div (
+                        ui.download_button ("downloadConstraints", "Download constraints", width = "250px"),
+                        style = "display: flex; justify-content: center;"
+                    ),
+                    ui.div (
+                        ui.download_button ("downloadConcepts", "Download concepts", width = "250px"),
+                        style = "display: flex; justify-content: center;"
+                    ),
+                    width = 1 / 2
                 )
             )
         ),
@@ -221,11 +249,12 @@ app_ui = ui.page_fluid (
                         ui.br (),
                         "Select minimal and maximal value range:",
                         ui.input_slider ("zoom_visual", "", min = 0, max = 0, step = 1, value = (0, 0), width = "300px"),
+                        ui.input_slider ("numBins_visual", "Number of bins:", min = 5, max = 100, step = 5, value = 50, width = "300px", ticks = True),
                         "Select feature from fuzzy concepts:",
                         ui.br (),
                         ui.input_selectize ("viewFeature_concept_visual", "", choices = {"--": "--"}, selected = "--", multiple = False, remove_button = True),
                         ui.br (),
-                        ui.input_slider ("numBins_visual", "Number of bins:", min = 5, max = 100, step = 5, value = 50, width = "300px", ticks = True),
+                        ui.input_slider ("deviationCutoff", "Maximal deviation:", min = 0, max = 1, step = 0.05, value = 0.2, width = "300px", ticks = True),
                         width = "400px", position = "left", open = "open"
                     ),
                     ui.div (
@@ -247,7 +276,6 @@ app_ui = ui.page_fluid (
 
 def server (input, output, session):
     matrix = reactive.value (pd.DataFrame ())
-    tempMatrix = reactive.value (pd.DataFrame ())
     itemList = reactive.value ({"feature": list (), "sample": list ()})
     plotRangeGlobal = reactive.value (list ())
     rangeGlobal = reactive.value (list ())
@@ -258,8 +286,7 @@ def server (input, output, session):
     labelValues = reactive.value (list ())
     pctProp = reactive.value (pd.DataFrame (dtype = float))
     allStd = reactive.value (pd.Series (dtype = float))
-    concepts_cons = reactive.value (dict ())
-    concepts_default = reactive.value (pd.DataFrame (dtype = float))
+    curveFit = reactive.value (pd.DataFrame (dtype = float))
     numCards_cons = reactive.value (0)
     numCards_default = reactive.value (0)
     defaultColors = reactive.value (["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple",
@@ -459,7 +486,6 @@ def server (input, output, session):
             slope = cutoff.diff ().iloc[1:].min () / 4
             trap = getFinalConcept (np.array ([cutoff.tolist ()[1:-1], [slope] * (numFS - 1)]).T, "trap", [0, 100])
             gauss = getFinalConcept (np.array (cutoff.tolist ()[1:-1]), "gauss", [0, 100])[:, 0]
-            concepts_cons.set ({"trap": trap, "gauss": gauss})
         ui.notification_show ("Derivation Completed", type = "message", duration = 2)
         colorCode = defaultColorCodes.get (); colorDict = dict (zip (colorCode, defaultColors.get ()))
         num = numCards_cons.get (); currNum = trap.shape[0]; xMin, xMax = rangeGlobal.get ()
@@ -717,7 +743,7 @@ def server (input, output, session):
                 fit.loc[feature] = dict (zip (["mu", "sigma"], fitMode (mtx.loc[feature], bwFct = bwFct, useFit = (bwFct > 0))))
             mtx = mtx.melt ()["value"].dropna ()
             fit.loc["ALL"] = dict (zip (["mu", "sigma"], fitMode (mtx, bwFct = bwFct, useFit = False)))
-            concepts_default.set (fit.round (3))
+            curveFit.set (fit.round (3))
         ui.notification_show ("Derivation Completed", type = "message", duration = 2)
     
 
@@ -795,7 +821,7 @@ def server (input, output, session):
             return
         mtx = mtx.replace (labelValues.get () + [-np.inf, np.inf], np.nan)
         minLevel = noiseCutoffLeft.get (); maxLevel = noiseCutoffRight.get ()
-        fit = concepts_default.get (); feature = input.viewFeature_default ()
+        fit = curveFit.get (); feature = input.viewFeature_default ()
         fig, ax = plt.subplots (figsize = (8, 5))
         if feature == "ALL":
             pltData = mtx.melt ()["value"]
@@ -859,7 +885,7 @@ def server (input, output, session):
 
     @render.download (filename = "concept_default.json")
     def download_default ():
-        mtx = matrix.get (); num = numCards_default.get (); fit = concepts_default.get ()
+        num = numCards_default.get (); fit = curveFit.get ()
         if input.fuzzyBy_default () == "feature":
             featureList = itemList.get ()["feature"]
         if input.fuzzyBy_default () == "dataset":
@@ -887,10 +913,113 @@ def server (input, output, session):
         allRanges = allRanges.replace (np.nan, 0); allRanges.loc["ALL"] = dict (zip (["min", "max"], rangeGlobal.get ()))
         with ui.Progress () as p:
             p.set (message = "Download Running", detail = "This will take a while...")
-            output = generateOutputFromDefault (featureList, zConcept, fit, allRanges, pctProp.get (), input.fuzzyBy_default (), basicInfo, typeList, names, colors)
+            output = generateOutputFromDefault (featureList, zConcept, fit, allRanges, basicInfo, typeList, names, colors)
             outputStr = json.dumps (output, indent = 4)
             yield outputStr
         ui.notification_show ("Download Completed", type = "message", duration = 2)
+
+
+    @reactive.effect
+    @reactive.event (input.uniqueName)
+    def _ ():
+        defaultName = input.defaultName () if input.defaultName () != "" else "ALL"
+        featureList = set (itemList.get ().get ("feature", list ()))
+        if {defaultName}.issubset (featureList):
+            message = ui.modal ("The default name already exists as index in the input matrix.", title = "Check Failed",
+                                easy_close = True)
+            ui.modal_show (message)
+        elif len (featureList) != 0:
+            ui.notification_show ("The default name is unique.", type = "message", duration = 2)
+
+
+    @render.download (filename = "concept_constraint.json")
+    def downloadConstraints ():
+        if numCards_cons.get () == 0 and numCards_default.get () == 0:
+            return
+        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
+        option = input.downloadOption (); labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
+        if option == "cons":
+            num = numCards_cons.get ()
+            content = {"derivation_method": "percentiles", "number_fuzzy_sets": num,
+                       "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+        elif option == "default":
+            num = numCards_default.get ()
+            content = {"derivation_method": "default", "number_fuzzy_sets": num,
+                       "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+        else:
+            raise ValueError
+        for idx in range (1, num + 1):
+            typeFS = input[f"typeFS{idx}_{option}"] (); color = input[f"color{idx}_{option}"] ()
+            if typeFS == "trap":
+                params = [input[f"coord{idx}_a_{option}"] (), input[f"coord{idx}_b_{option}"] (),
+                          input[f"coord{idx}_c_{option}"] (), input[f"coord{idx}_d_{option}"] ()]
+            else:
+                params = [input[f"center{idx}_{option}"] (), input[f"width{idx}_{option}"] ()]
+            content[input[f"name{idx}_{option}"] ()] = [params, typeFS, color]
+        print (content)
+        outputStr = json.dumps (content, indent = 4)
+        yield outputStr
+        ui.notification_show ("Download Completed", type = "message", duration = 2)
+
+
+    @render.download (filename = "concept_detailed.json")
+    def downloadConcepts ():
+        if numCards_cons.get () == 0 and numCards_default.get () == 0:
+            return
+        option = input.downloadOption (); defaultName = input.defaultName () if input.defaultName () != "" else "ALL"
+        featureList = [defaultName] + itemList.get ()["feature"]
+        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}; labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
+        if option == "cons":
+            num = numCards_cons.get (); ticks = pctProp.get ().rename (index = {"ALL": defaultName})
+            typeList = list (); names = list (); colors = list (); pctConcept = list ()
+            for idx in range (1, num + 1):
+                typeList.append (input[f"typeFS{idx}_cons"] ()); names.append (input[f"name{idx}_cons"] ()); colors.append (input[f"color{idx}_cons"] ())
+                if input[f"typeFS{idx}_cons"] () == "trap":
+                    pctConcept.append ([int (10 * input[f"coord{idx}_a_cons"] ()), int (10 * input[f"coord{idx}_b_cons"] ()),
+                                        int (10 * input[f"coord{idx}_c_cons"] ()), int (10 * input[f"coord{idx}_d_cons"] ())])
+                else:
+                    pctConcept.append ([10 * input[f"center{idx}_cons"] (), input[f"width{idx}_cons"] ()])
+            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+            if np.isfinite (noiseCutoffLeft.get ()):
+                basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
+            if np.isfinite (noiseCutoffRight.get ()):
+                basicInfo["MAX-NOISE"] = noiseCutoffRight.get ()
+            with ui.Progress () as p:
+                p.set (message = "Download Running", detail = "This will take a while...")
+                output = generateOutputFromConstraint (featureList, pctConcept, ticks, allStd.get (), basicInfo, typeList, names, colors)
+                outputStr = json.dumps (output, indent = 4)
+                yield outputStr
+            ui.notification_show ("Download Completed", type = "message", duration = 2)
+        elif option == "default":
+            num = numCards_default.get (); fit = curveFit.get ().rename (index = {"ALL": defaultName})
+            typeList = list (); names = list (); colors = list (); zConcept = list ()
+            for idx in range (1, num + 1):
+                typeList.append (input[f"typeFS{idx}_default"] ()); names.append (input[f"name{idx}_default"] ()); colors.append (input[f"color{idx}_default"] ())
+                if input[f"typeFS{idx}_default"] () == "trap":
+                    zConcept.append ([input[f"coord{idx}_a_default"] (), input[f"coord{idx}_b_default"] (),
+                                      input[f"coord{idx}_c_default"] (), input[f"coord{idx}_d_default"] ()])
+                else:
+                    zConcept.append ([input[f"center{idx}_default"] (), input[f"width{idx}_default"] ()])
+            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
+            if np.isfinite (noiseCutoffLeft.get ()):
+                basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
+            if np.isfinite (noiseCutoffRight.get ()):
+                basicInfo["MAX-NOISE"] = noiseCutoffRight.get ()
+            allRanges = matrix.get ().replace (labelValues.get (), np.nan)
+            if addNoiseLeft.get ():
+                allRanges = allRanges.mask (allRanges <= noiseCutoffLeft.get ())
+            if addNoiseRight.get ():
+                allRanges = allRanges.mask (allRanges >= noiseCutoffRight.get ())
+            allRanges = pd.DataFrame ({"min": allRanges.min (axis = 1, skipna = True), "max": allRanges.max (axis = 1, skipna = True)})
+            allRanges = allRanges.replace (np.nan, 0); allRanges.loc[defaultName] = dict (zip (["min", "max"], rangeGlobal.get ()))
+            with ui.Progress () as p:
+                p.set (message = "Download Running", detail = "This will take a while...")
+                output = generateOutputFromDefault (featureList, zConcept, fit, allRanges, basicInfo, typeList, names, colors)
+                outputStr = json.dumps (output, indent = 4)
+                yield outputStr
+            ui.notification_show ("Download Completed", type = "message", duration = 2)
+        else:
+            raise ValueError
 
 
     @reactive.effect
@@ -978,8 +1107,8 @@ def server (input, output, session):
                 allRanges = matrix.get ().replace (labelValues.get (), np.nan)
                 allRanges = pd.DataFrame ({"min": allRanges.min (axis = 1, skipna = True), "max": allRanges.max (axis = 1, skipna = True)})
                 allRanges = allRanges.replace (np.nan, 0); allRanges.loc["ALL"] = dict (zip (["min", "max"], rangeGlobal.get ()))
-                concepts = generateOutputFromDefault (["ALL"] + itemList.get ()["feature"], tempConcept, concepts_default.get (), allRanges, pctProp.get (),
-                                                      input.fuzzyBy_default (), basicInfo,typeList, names, colors)
+                concepts = generateOutputFromDefault (["ALL"] + itemList.get ()["feature"], tempConcept, curveFit.get (), allRanges,
+                                                      basicInfo,typeList, names, colors)
             concepts_visual.set (concepts)
         else:
             concepts = concepts_visual.get ()
@@ -1074,15 +1203,16 @@ def server (input, output, session):
         annData = pd.DataFrame ({"expectation": expectation, "observation": observation,
                                  "deviation": {key: observation[key] - expectation[key] for key in expectation.keys ()}})
         pltData = pd.DataFrame ({"expectation": 0, "observation": 0, "deviation": annData["deviation"]}, index = annData.index).T
+        cutoff = input.deviationCutoff (); plotCutoff = 0.01 if cutoff == 0 else cutoff
         cmap = sns.color_palette ("vlag", 3)
         fig, ax = plt.subplots (figsize = (8, 5))
-        sns.heatmap (pltData, vmin = -0.75, vmax = 0.75, cmap = cmap, center = 0, annot = annData.T, fmt = ".1%",
+        sns.heatmap (pltData, vmin = -3 * plotCutoff, vmax = 3 * plotCutoff, cmap = cmap, center = 0, annot = annData.T, fmt = ".1%",
                      linewidths = 0.5, linecolor = "black", ax = ax)
         ax.set_xticks (ax.get_xticks ()); ax.set_xticklabels (ax.get_xticklabels (), rotation = 0, ha = "center")
         ax.set_yticks (ax.get_yticks ()); ax.set_yticklabels (ax.get_yticklabels (), rotation = 0, ha = "right")
         ax.set_xlabel (""); ax.set_ylabel ("observed percentage - expected percentage", size = 10); ax.yaxis.set_label_position ("right")
-        colorbar = ax.collections[0].colorbar; colorbar.set_ticks ([-0.5, -0.25, 0, 0.25, 0.5])
-        colorbar.set_ticklabels (["not\naccepted", "-25%", "accepted", "25%", "not\naccepted"])
+        colorbar = ax.collections[0].colorbar; colorbar.set_ticks ([-2 * plotCutoff, -plotCutoff, 0, plotCutoff, 2 * plotCutoff])
+        colorbar.set_ticklabels (["not\naccepted", f"{-cutoff:.1%}", "accepted", f"{cutoff:.1%}", "not\naccepted"])
         fig.tight_layout ()
         return fig
 

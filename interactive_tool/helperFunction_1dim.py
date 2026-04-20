@@ -84,6 +84,18 @@ def getPercentage (values, concept, labels = list (), minLevel = -np.inf, maxLev
 
 
 
+def getSubarea (mu, sigma, concept, minLevel = -np.inf, maxLevel = np.inf):
+    noisePct = np.diff (stats.norm.cdf ([-np.inf, minLevel, maxLevel, np.inf], loc = mu, scale = sigma))[[0, 2]]
+    pct = np.diff (stats.norm.cdf ([-np.inf] + _getIntersection (concept) + [np.inf], loc = mu, scale = sigma)).tolist ()
+    tmp = list (); tmpInv = list ()
+    for idx in range (len (pct)):
+        tmp.append (max (0, pct[idx] - noisePct[0])); noisePct[0] = max (0, noisePct[0] - pct[idx])
+        tmpInv.append (max (0, pct[-(idx + 1)] - noisePct[1])); noisePct[1] = max (0, noisePct[1] - pct[-(idx + 1)])
+    percent = [min (tmp[idx], tmpInv[-(idx + 1)]) for idx in range (len (pct))]
+    return percent
+
+
+
 def estimateCutoff (mtx, percents):
     numFuzzySets = len (percents)
     valueRange = pd.DataFrame ({"min": np.floor (mtx.min (axis = 1, skipna = True)) - 1,
@@ -208,35 +220,33 @@ def getLines (fuzzyConcept, cutoffs, colors):
             else:
                 continue
         elif len (params) == 4:
-            if cutoffs[1] <= params[0]:
+            if cutoffs[1] <= params[0] and params[0] != params[1]:
                 continue
             elif cutoffs[1] > params[0] and cutoffs[1] < params[1]:
-                with np.errstate (divide = "ignore", invalid = "ignore"):
-                    y_cutoffs = [(cutoffs[0] - params[0]) / (params[1] - params[0]), (cutoffs[1] - params[0]) / (params[1] - params[0])]
+                y_cutoffs = [(cutoffs[0] - params[0]) / (params[1] - params[0]), (cutoffs[1] - params[0]) / (params[1] - params[0])]
                 lines += [(max (cutoffs[0], params[0]), cutoffs[1]), (max (y_cutoffs[0], 0), y_cutoffs[1]), colors[idx]]
             elif cutoffs[1] >= params[1] and cutoffs[1] <= params[2]:
-                with np.errstate (divide = "ignore", invalid = "ignore"):
-                    y_cutoffs = [(cutoffs[0] - params[0]) / (params[1] - params[0]), 1]
                 if cutoffs[0] < params[1]:
+                    y_cutoffs = [0 if params[0] == params[1] else (cutoffs[0] - params[0]) / (params[1] - params[0]), 1]
                     lines += [(max (cutoffs[0], params[0]), params[1]), (max (y_cutoffs[0], 0), 1), colors[idx],
                               (params[1], cutoffs[1]), (1, 1), colors[idx]]
                 else:
                     lines += [(cutoffs[0], cutoffs[1]), (1, 1), colors[idx]]
             else:
                 if cutoffs[0] < params[1]:
-                    with np.errstate (divide = "ignore", invalid = "ignore"):
-                        y_cutoffs = [(cutoffs[0] - params[0]) / (params[1] - params[0]), (cutoffs[1] - params[3]) / (params[2] - params[3])]
+                    y_cutoffs = [0 if params[0] == params[1] else (cutoffs[0] - params[0]) / (params[1] - params[0]),
+                                 0 if params[2] == params[3] else (cutoffs[1] - params[3]) / (params[2] - params[3])]
                     lines += [(max (cutoffs[0], params[0]), params[1]), (max (y_cutoffs[0], 0), 1), colors[idx],
                               (params[1], params[2]), (1, 1), colors[idx],
                               (params[2], min (cutoffs[1], params[3])), (1, max (y_cutoffs[1], 0)), colors[idx]]
                 elif cutoffs[0] >= params[1] and cutoffs[0] <= params[2]:
-                    with np.errstate (divide = "ignore", invalid = "ignore"):
-                        y_cutoffs = [1, (cutoffs[1] - params[3]) / (params[2] - params[3])]
+                    y_cutoffs = [1, 0 if params[2] == params[3] else (cutoffs[1] - params[3]) / (params[2] - params[3])]
                     lines += [(cutoffs[0], params[2]), (1, 1), colors[idx],
                               (params[2], min (cutoffs[1], params[3])), (1, max (y_cutoffs[1], 0)), colors[idx]]
                 else:
-                    with np.errstate (divide = "ignore", invalid = "ignore"):
-                        y_cutoffs = [(cutoffs[0] - params[3]) / (params[2] - params[3]), (cutoffs[1] - params[3]) / (params[2] - params[3])]
+                    if params[2] == params[3]:
+                        return
+                    y_cutoffs = [(cutoffs[0] - params[3]) / (params[2] - params[3]), (cutoffs[1] - params[3]) / (params[2] - params[3])]
                     lines += [(cutoffs[0], min (cutoffs[1], params[3])), (y_cutoffs[0], max (y_cutoffs[1], 0)), colors[idx]]
         else:
             raise ValueError
@@ -244,16 +254,15 @@ def getLines (fuzzyConcept, cutoffs, colors):
 
 
 
-def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, direction, basicInfo, typeList, names, colors):
+def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, basicInfo, typeList, names, colors):
     num = len (typeList); output = dict ()
-    featureMap = dict (zip (featureList, featureList if direction == "feature" else ["ALL"] * len (featureList)))
     for feature in featureList:
-        params = list (); concept = list (); featureInfo = basicInfo.copy (); useFeature = featureMap[feature]
+        params = list (); concept = list (); featureInfo = basicInfo.copy ()
         minLevel = basicInfo.get ("MIN-NOISE", -np.inf); maxLevel = basicInfo.get ("MAX-NOISE", np.inf)
         xMin = np.floor (ticks.loc[feature, 0]) - 1; xMax = np.ceil (ticks.loc[feature, 1000]) + 1
         for i in range (num):
             if typeList[i] == "trap":
-                coords = ticks.loc[useFeature, pctConcept[i]].round (3).tolist ()
+                coords = ticks.loc[feature, pctConcept[i]].round (3).tolist ()
                 if i == 0:
                     coords[0] = xMin; coords[1] = xMin
                 elif i == num - 1:
@@ -263,14 +272,14 @@ def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, direct
                     break
                 params.append (coords); concept.append ([coords, "trapezoidal", colors[i]])
             else:
-                center = round (ticks.loc[useFeature, int (pctConcept[i][0])], 3)
+                center = round (ticks.loc[feature, int (pctConcept[i][0])], 3)
                 if not np.isfinite (center):
                     featureInfo["number_fuzzy_sets"] = 0
                     break
-                params.append ([center, round (pctConcept[i][1] * widths[useFeature], 3)])
+                params.append ([center, round (pctConcept[i][1] * widths[feature], 3)])
                 concept.append ([params[-1], "Gaussian", colors[i]])
         featureInfo.update (dict (zip (names, concept)))
-        percent = dict (zip (names, getPercentage (ticks.loc[useFeature].copy (), params, labels = list (), minLevel = minLevel, maxLevel = maxLevel)))
+        percent = dict (zip (names, getPercentage (ticks.loc[feature].copy (), params, labels = list (), minLevel = minLevel, maxLevel = maxLevel)))
         for name in names:
             featureInfo[name].append (round (percent[name], 5))
         output[feature] = featureInfo.copy ()
@@ -278,22 +287,21 @@ def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, direct
 
 
 
-def generateOutputFromDefault (featureList, zConcept, fit, allRanges, ticks, direction, basicInfo, typeList, names, colors):
+def generateOutputFromDefault (featureList, zConcept, fit, allRanges, basicInfo, typeList, names, colors):
     num = len (typeList); output = dict ()
-    featureMap = dict (zip (featureList, featureList if direction == "feature" else ["ALL"] * len (featureList)))
     for feature in featureList:
         mu, sigma = fit.loc[feature]
-        params = list (); concept = list (); featureInfo = basicInfo.copy (); useFeature = featureMap[feature]
+        params = list (); concept = list (); featureInfo = basicInfo.copy ()
         minLevel = basicInfo.get ("MIN-NOISE", -np.inf); maxLevel = basicInfo.get ("MAX-NOISE", np.inf)
         for i in range (num):
             if typeList[i] == "trap":
                 coords = [round (mu + sigma * zConcept[i][0], 3), round (mu + sigma * zConcept[i][1], 3),
                           round (mu + sigma * zConcept[i][2], 3), round (mu + sigma * zConcept[i][3], 3)]
                 if i == 0:
-                    xMin = np.floor (min (allRanges.loc[useFeature, "min"], coords[2])) - 1
+                    xMin = np.floor (min (allRanges.loc[feature, "min"], coords[2])) - 1
                     coords[0] = xMin; coords[1] = xMin
                 elif i == num - 1:
-                    xMax = np.ceil (max (allRanges.loc[useFeature, "max"], coords[1])) + 1
+                    xMax = np.ceil (max (allRanges.loc[feature, "max"], coords[1])) + 1
                     coords[2] = xMax; coords[3] = xMax
                 if any ([~np.isfinite (x) for x in coords]):
                     featureInfo["number_fuzzy_sets"] = 0
@@ -306,7 +314,7 @@ def generateOutputFromDefault (featureList, zConcept, fit, allRanges, ticks, dir
                     break
                 params.append ([center, round (zConcept[i][1] * sigma, 3)]); concept.append ([params[-1], "Gaussian", colors[i]])
         featureInfo.update (dict (zip (names, concept)))
-        percent = dict (zip (names, getPercentage (ticks.loc[useFeature].copy (), params, labels = list (), minLevel = minLevel, maxLevel = maxLevel)))
+        percent = dict (zip (names, getSubarea (mu, sigma, params, minLevel = minLevel, maxLevel = maxLevel)))
         for name in names:
             featureInfo[name].append (round (percent[name], 5))
         output[feature] = featureInfo.copy ()
