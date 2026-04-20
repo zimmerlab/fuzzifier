@@ -1,0 +1,51 @@
+{
+    "label_values": ["-Infinity", 0],
+    "left_noise_cutoff_constant": 3,
+    "right_noise_cutoff_constant": 20,
+    "left_noise_cutoff_percent": 0,
+    "right_noise_cutoff_percent": 1,
+    "key_default_concept": "DEFAULT",
+    "define_concept_per": "feature",
+    "define_concept_by": "default",
+    "fuzzy_variables": ["LOW", "low", "MEDIUM", "high", "HIGH"],
+    "parameters_constraint": {
+        "constraint_type": "proportion",
+        "constraints": [
+            [0, 0, 0.15, 0.25],
+            [0.15, 0.25, 0.25, 0.4],
+            [0.5, 0.2],
+            [0.6, 0.75, 0.75, 0.85],
+            [0.75, 0.85, 1, 1]
+        ],
+        "use_scipy_optimization": false
+    },
+    "parameters_default": {
+        "number_fuzzy_sets_per_side": 2,
+        "band_width_factor": 0.75,
+        "width_scale_factor": 1,
+        "slope_percentage": 0.5,
+        "use_scipy_optimization": false
+    },
+    "__options": {
+        "define_concept_per": ["feature", "sample", "matrix"],
+        "define_concept_by": ["default", "constraint"],
+        "constraint_type": ["fixed", "proportion"]
+    },
+    "__explanation": {
+        "default_concept": "matrix-wise fuzzy concept",
+        "fixed": {
+            "trapezoidal": "4 x-coordinates",
+            "Gaussian":{
+                "center": "x-coordinate of mu",
+                "width": "sigma"
+            }
+        },
+        "proportion": {
+            "trapezoidal": "percentiles of 4 x-coordinates",
+            "Gaussian": {
+                "center": "percentile of x-coordinate",
+                "width": "scaling factor of standard deviation"
+            }
+        }
+    }
+}
