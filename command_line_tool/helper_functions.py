@@ -160,16 +160,17 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
             elif consType == "z-score" and not masked.empty:
                 mu, sigma = _fitMode (masked, bwFct = bwFct, useFit = useFit, useOptimize = useOptimize)
                 if (not (np.isnan (mu) and np.isnan (sigma))) and sigma > 0:
-                    typeFS = list (); concept = list ()
+                    typeFS = list (); concept = list (); scaleFct = list ()
                     for idx in range (numFS):
                         typeFS.append (typeFS_dict[len (refConcept[idx])])
                         if typeFS[-1] == "trapezoidal":
                             concept.append ([round (mu + sigma * z, 3) for z in refConcept[idx]])
                         else:
                             concept.append ([round (mu + sigma * refConcept[idx][0], 3), round (refConcept[idx][1] * sigma, 3)])
+                            scaleFct.append (refConcept[idx][1])
                     concept = _adjustBorder (concept, masked.min (), masked.max ())
-                    percent = getPercentage (masked.quantile (np.linspace (0, 1, 1001)), concept, labels = list (),
-                                             minLevel = minLevel, maxLevel = maxLevel)
+                    scaleFct = 1 if len (scaleFct) == 0 else sum (scaleFct) / len (scaleFct)
+                    percent = getSubarea (mu, scaleFct * sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
                     for idx in range (numFS):
                         info[renameFS[idx]] = [concept[idx], typeFS[idx], defaultColors[idx], round (percent[idx], 5)]
             else:
