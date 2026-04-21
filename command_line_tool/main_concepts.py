@@ -62,7 +62,7 @@ elif method == "default":
     useOptimize = params.get ("use_scipy_optimization", False)
     coords = [widthFct * (i + overlap) for i in np.linspace (-numFS, numFS, numFS + 1) for overlap in [-slopeFct, slopeFct]]
     concept_cons = np.round ([coords[(2 * k - 2):(2 * k + 2)] for k in range (1, numFS + 1)], 3).tolist ()
-    concept_cons[centerIdx] = [0, 1]; concept_cons[0][0] = concept_cons[0][1]; concept_cons[-1][3] = concept_cons[-1][2]; consValue = list ()
+    concept_cons[centerIdx] = [0, widthFct]; concept_cons[0][0] = concept_cons[0][1]; concept_cons[-1][3] = concept_cons[-1][2]; consValue = list ()
     percentage = getSubarea (0, 1, concept_cons, minLevel = -np.inf, maxLevel = np.inf)
 else:
     raise ValueError

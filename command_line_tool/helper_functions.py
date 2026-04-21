@@ -127,8 +127,8 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                      "#C49C94", "#F7B6D2", "#C7C7C7", "#DBDB8D", "#9EDAE5"]
     if masked.empty:
         if method == "constraint" and consType == "fixed":
-            info["MIN-NOISE"] = minLevelCons if np.isfinite (minLevelCons) else "-Infinity"
-            info["MAX-NOISE"] = maxLevelCons if np.isfinite (maxLevelCons) else "Infinity"
+            info["MIN-NOISE"] = round (minLevelCons, 3) if np.isfinite (minLevelCons) else "-Infinity"
+            info["MAX-NOISE"] = round (maxLevelCons, 3) if np.isfinite (maxLevelCons) else "Infinity"
             for idx in range (numFS):
                 info[renameFS[idx]] = [refConcept[idx], typeFS_dict[len (refConcept[idx])], defaultColors[idx], 0]
         else:
@@ -137,8 +137,8 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
         minLevel = max (minLevelCons, -np.inf if minLevelPct == 0 else masked.quantile (minLevelPct))
         maxLevel = min (maxLevelCons, np.inf if maxLevelPct == 1 else masked.quantile (maxLevelPct))
         masked = masked.mask ((masked <= minLevel) | (masked >= maxLevel)).dropna ()
-        info["MIN-NOISE"] = minLevel if np.isfinite (minLevel) else "-Infinity"
-        info["MAX-NOISE"] = maxLevel if np.isfinite (maxLevel) else "Infinity"
+        info["MIN-NOISE"] = round (minLevel, 3) if np.isfinite (minLevel) else "-Infinity"
+        info["MAX-NOISE"] = round (maxLevel, 3) if np.isfinite (maxLevel) else "Infinity"
         if method == "constraint":
             if consType == "fixed":
                 percent = getPercentage (values, refConcept, labels = labels, minLevel = minLevel, maxLevel = maxLevel)
@@ -168,7 +168,8 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                         else:
                             concept.append ([round (mu + sigma * refConcept[idx][0], 3), round (refConcept[idx][1] * sigma, 3)])
                     concept = _adjustBorder (concept, masked.min (), masked.max ())
-                    percent = getSubarea (mu, sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
+                    percent = getPercentage (masked.quantile (np.linspace (0, 1, 1001)), concept, labels = list (),
+                                             minLevel = minLevel, maxLevel = maxLevel)
                     for idx in range (numFS):
                         info[renameFS[idx]] = [concept[idx], typeFS[idx], defaultColors[idx], round (percent[idx], 5)]
             else:
@@ -178,9 +179,9 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
             if (not (np.isnan (mu) and np.isnan (sigma))) and sigma > 0:
                 coords = [mu + widthFct * (i + overlap) * sigma for i in np.linspace (-numFS, numFS, numFS + 1) for overlap in [-slopeFct, slopeFct]]
                 concept = np.round ([coords[(2 * k - 2):(2 * k + 2)] for k in range (1, numFS + 1)], 3).tolist ()
-                concept[centerIdx] = [round (mu, 3), round (sigma, 3)]
+                concept[centerIdx] = [round (mu, 3), round (widthFct * sigma, 3)]
                 concept = _adjustBorder (concept, masked.min (), masked.max ())
-                percent = getSubarea (mu, sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
+                percent = getSubarea (mu, widthFct * sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
                 for idx in range (numFS):
                     info[renameFS[idx]] = [concept[idx], typeFS_dict[len (concept[idx])], defaultColors[idx], round (percent[idx], 5)]
             else:
