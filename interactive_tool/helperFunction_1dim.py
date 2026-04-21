@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from scipy import stats, signal
+from scipy import stats, signal, optimize
 
 
 def getMtxSummary (mtx, labels = list (), noiseRep = None):
@@ -156,7 +156,7 @@ def getFinalConcept (concept, typeFS, valueRange):
 
 
 
-def fitMode (values, bwFct = 1, useFit = True):
+def fitMode (values, bwFct = 1, useFit = True, useOptimize = False):
     finite_values = values[np.isfinite (values)]; mu = finite_values.mean ()
     if useFit:
         if np.isnan (mu) or len (values) < 2:
@@ -179,14 +179,19 @@ def fitMode (values, bwFct = 1, useFit = True):
             modeIdx = modes.reset_index (drop = True)["density"].idxmax ()
             if np.abs (meanIdx - modeIdx) > 1:
                 modeIdx = modes.reset_index (drop = True).loc[[meanIdx - 1, meanIdx + 1]].sort_values ("density").index[1]
-        mu = modes.iloc[modeIdx, 0]
-        sigma1 = finite_values[finite_values < mu].std (); sigma1 = 0 if np.isnan (sigma1) else sigma1
-        sigma2 = finite_values[finite_values > mu].std (); sigma2 = 0 if np.isnan (sigma2) else sigma2
-        sigma = np.sqrt (sigma1 ** 2 + sigma2 ** 2)
+        if useOptimize:
+            lb = np.floor (modes.iloc[modeIdx, 0] * 1e3) / 1e3; ub = np.ceil (modes.iloc[modeIdx, 0] * 1e3) / 1e3
+            ub = ub + 1e-3 if lb == ub else ub
+            res, _ = optimize.curve_fit (lambda x, m, s: stats.norm.pdf (x, loc = m, scale = s), density["value"], density["density"],
+                                         bounds = [(lb, -np.inf), (ub, np.inf)])
+            mu = res[0]; sigma = res[1]
+        else:
+            mu = modes.iloc[modeIdx, 0]
+            sigma1 = finite_values[finite_values < mu].std (); sigma1 = 0 if np.isnan (sigma1) else sigma1
+            sigma2 = finite_values[finite_values > mu].std (); sigma2 = 0 if np.isnan (sigma2) else sigma2
+            sigma = np.sqrt (sigma1 ** 2 + sigma2 ** 2)
     else:
         sigma = finite_values.std ()
-    if sigma != 0 and round (sigma, 3) == 0:
-        sigma = 1e-3
     return round (mu, 3), round (sigma, 3)
 
 
@@ -279,7 +284,8 @@ def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, basicI
                 params.append ([center, round (pctConcept[i][1] * widths[feature], 3)])
                 concept.append ([params[-1], "Gaussian", colors[i]])
         featureInfo.update (dict (zip (names, concept)))
-        percent = dict (zip (names, getPercentage (ticks.loc[feature].copy (), params, labels = list (), minLevel = minLevel, maxLevel = maxLevel)))
+        percent = dict (zip (names, getPercentage (ticks.loc[feature].copy (), params, labels = list (),
+                                                   minLevel = minLevel, maxLevel = maxLevel)))
         for name in names:
             featureInfo[name].append (round (percent[name], 5))
         output[feature] = featureInfo.copy ()
@@ -312,7 +318,8 @@ def generateOutputFromDefault (featureList, zConcept, fit, allRanges, basicInfo,
                 if not np.isfinite (center):
                     featureInfo["number_fuzzy_sets"] = 0
                     break
-                params.append ([center, round (zConcept[i][1] * sigma, 3)]); concept.append ([params[-1], "Gaussian", colors[i]])
+                params.append ([center, round (zConcept[i][1] * sigma, 3)])
+                concept.append ([params[-1], "Gaussian", colors[i]])
         featureInfo.update (dict (zip (names, concept)))
         percent = dict (zip (names, getSubarea (mu, sigma, params, minLevel = minLevel, maxLevel = maxLevel)))
         for name in names:
