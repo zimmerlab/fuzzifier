@@ -1,15 +1,19 @@
+import warnings
+warnings.simplefilter (action = "ignore", category = FutureWarning)
+
 import os
 import json
 import argparse
 import numpy as np
 import pandas as pd
+import scanpy as sc
 from helper_functions import getConcept, getPercentage, getSubarea
 
 # python main_concepts.py --mtx rawValueMatrix --config config --output outputDirectory
 
 
 parser = argparse.ArgumentParser ()
-parser.add_argument ("--mtx", type = str, required = True, help = "Raw value matrix (TSV)")
+parser.add_argument ("--mtx", type = str, required = True, help = "Raw value matrix (TSV or H5AD)")
 parser.add_argument ("--config", type = str, required = True, help = "Config file for detailed parameters (JSON)")
 parser.add_argument ("--output", type = str, required = True, help = "Output directory for constraints and detailed fuzzy concepts")
 args = parser.parse_args ()
@@ -79,12 +83,18 @@ constraint = {"value_type": consType, "number_fuzzy_sets": numFS, "label_values"
 for idx in range (numFS):
     constraint[renameFS[idx]] = [concept_cons[idx], typeFS_dict[len (concept_cons[idx])], defaultColors[idx], round (percentage[idx], 5)]
 
-with open (args.mtx) as f:
-    samples = f.readline ().strip ("\n").split ("\t")[1:]
-    features = [line.strip ("\n").split ("\t")[0] for line in f.readlines ()]
-with open (args.mtx) as f:
-    values = [[np.nan if x == "" else float (x) for x in line.strip ("\n").split ("\t")[1:]] for line in f.readlines ()[1:]]
-values = pd.Series (sum (values, list ()))
+if args.mtx.lower ().endswith ("tsv"):
+    with open (args.mtx) as f:
+        samples = f.readline ().strip ("\n").split ("\t")[1:]
+        features = [line.strip ("\n").split ("\t")[0] for line in f.readlines ()]
+    with open (args.mtx) as f:
+        values = [[np.nan if x == "" else float (x) for x in line.strip ("\n").split ("\t")[1:]] for line in f.readlines ()[1:]]
+    values = pd.Series (sum (values, list ()))
+elif args.mtx.lower ().endswith ("h5ad"):
+    adata = sc.read_h5ad (args.mtx, backed = "r"); features = list (adata.var_names); samples = list (adata.obs_names)
+    values = pd.Series (np.array (adata[samples].X.data.tolist ()).reshape ((1, -1))[0])
+else:
+    raise TypeError
 default = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                       minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
                       useFit = False, useOptimize = False, bwFct = bwFct,
@@ -94,26 +104,47 @@ del values
 
 detailedConcept = {defaultName: default}
 if direction == "feature":
-    with open (args.mtx) as f:
-        _ = f.readline ()
+    if args.mtx.lower ().endswith ("tsv"):
+        with open (args.mtx) as f:
+            _ = f.readline ()
+            for feature in features:
+                values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]],
+                                    index = samples)
+                detailedConcept[feature] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
+                                                       minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                                       useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
+                                                       refConcept = concept_cons, consValue = consValue,
+                                                       widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
+    if args.mtx.lower ().endswith ("h5ad"):
         for feature in features:
-            values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]], index = samples)
+            values = adata[:, feature].to_df ()[feature]
             detailedConcept[feature] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                                                    minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
                                                    useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
                                                    refConcept = concept_cons, consValue = consValue,
                                                    widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
 elif direction == "sample":
-    maxSplit = 2
-    for sample in samples:
-        with open (args.mtx) as f:
-            values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]], index = features)
-        values[values == ""] = np.nan; values = values.astype (float); maxSplit += 1
-        detailedConcept[sample] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
-                                              minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
-                                              useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
-                                              refConcept = concept_cons, consValue = consValue,
-                                              widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
+    if args.mtx.lower ().endswith ("tsv"):
+        maxSplit = 2
+        for sample in samples:
+            with open (args.mtx) as f:
+                values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]],
+                                    index = features)
+            values[values == ""] = np.nan; values = values.astype (float); maxSplit += 1
+            detailedConcept[sample] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
+                                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                                  useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
+                                                  refConcept = concept_cons, consValue = consValue,
+                                                  widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
+    if args.mtx.lower ().endswith ("h5ad"):
+        for sample in samples:
+            values = adata[sample].to_df ().loc[sample]
+            detailedConcept[sample] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
+                                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                                  useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
+                                                  refConcept = concept_cons, consValue = consValue,
+                                                  widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
+    
     
 if not os.path.exists (args.output):
     os.makedirs (args.output, exist_ok = True)
