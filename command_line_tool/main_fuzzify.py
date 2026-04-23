@@ -1,15 +1,19 @@
+import warnings
+warnings.simplefilter (action = "ignore", category = FutureWarning)
+
 import os
 import json
 import argparse
 import numpy as np
 import pandas as pd
+import scanpy as sc
 from helper_functions import fuzzify, getConcept
 
 # python main_fuzzifier.py --mtx rawValueMatrix --concept fuzzyConcept(s) --config config --output outputDirectory
 
 
 parser = argparse.ArgumentParser ()
-parser.add_argument ("--mtx", type = str, required = True, help = "Raw value matrix (TSV)")
+parser.add_argument ("--mtx", type = str, required = True, help = "Raw value matrix (TSV or H5AD)")
 parser.add_argument ("--concept", type = str, required = True, help = "Constraints or detailed fuzzy concepts (JSON)")
 parser.add_argument ("--config", type = str, required = True, help = "Config file for detailed parameters (JSON)")
 parser.add_argument ("--output", type = str, required = True, help = "Ouptut directory for fuzzy values")
@@ -33,9 +37,15 @@ defaultName = config.get ("key_default_concept", "DEFAULT"); direction = config.
 renameLabels = config.get ("rename_labels", dict ())
 renameLabels = {const.get (val.lower ()): renameLabels[val] for val in renameLabels.keys () if isinstance (val, str)}
 
-with open (args.mtx) as f:
-    samples = f.readline ().strip ("\n").split ("\t")[1:]
-    features = [line.split ("\t")[0] for line in f.readlines ()]
+if args.mtx.lower ().endswith ("tsv"):
+    with open (args.mtx) as f:
+        samples = f.readline ().strip ("\n").split ("\t")[1:]
+        features = [line.split ("\t")[0] for line in f.readlines ()]
+elif args.mtx.lower ().endswith ("h5ad"):
+    adata = sc.read_h5ad (args.mtx, backed = "r")
+    features = list (adata.var_names); samples = list (adata.obs_names)
+else:
+    raise TypeError
     
 if not os.path.exists (args.output):
     os.makedirs (args.output, exist_ok = True)
@@ -43,20 +53,40 @@ if not os.path.exists (args.output):
 if isinstance (list (concepts.values ())[0], dict):
     default = concepts.get (defaultName, dict ())
     if direction == "sample":
-        maxSplit = 2
-        for sample in samples:
-            with open (args.mtx) as f:
-                values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]], index = features)
-            values[values == ""] = np.nan; values = values.astype (float); concept = concepts.get (sample, default).copy (); maxSplit += 1
-            concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
-            memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-            if not memberships.empty:
-                memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
+        if args.mtx.lower ().endswith ("tsv"):
+            maxSplit = 2
+            for sample in samples:
+                with open (args.mtx) as f:
+                    values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]], index = features)
+                values[values == ""] = np.nan; values = values.astype (float); concept = concepts.get (sample, default).copy (); maxSplit += 1
+                concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
+                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+                if not memberships.empty:
+                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
+        if args.mtx.lower ().endswith ("h5ad"):
+            for sample in samples:
+                values = adata[sample].to_df ().loc[sample].replace (0, np.nan).dropna ()
+                concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
+                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+                if not memberships.empty:
+                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
     else:
-        with open (args.mtx) as f:
-            _ = f.readline ()
+        if args.mtx.lower ().endswith ("tsv"):
+            with open (args.mtx) as f:
+                _ = f.readline ()
+                for feature in features:
+                    values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]], index = samples)
+                    if direction == "feature":
+                        concept = concepts.get (feature, default).copy ()
+                    else:
+                        concept = default.copy ()
+                    concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
+                    memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+                    if not memberships.empty:
+                        memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{feature}.tsv"), sep = "\t")
+        if args.mtx.lower ().endesith ("h5ad"):
             for feature in features:
-                values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]], index = samples)
+                values = adata[:, feature].to_df ()[feature].replace (0, np.nan).dropna ()
                 if direction == "feature":
                     concept = concepts.get (feature, default).copy ()
                 else:
@@ -83,9 +113,12 @@ else:
             else:
                 consValue |= {params[0]}
     basicInfo = {"number_fuzzy_sets": numFS, "label_values": labels}
-    with open (args.mtx) as f:
-        values = [[np.nan if x == "" else float (x) for x in line.strip ("\n").split ("\t")[1:]] for line in f.readlines ()[1:]]
-    values = pd.Series (sum (values, list ()))
+    if args.mtx.lower ().endswith ("tsv"):
+        with open (args.mtx) as f:
+            values = [[np.nan if x == "" else float (x) for x in line.strip ("\n").split ("\t")[1:]] for line in f.readlines ()[1:]]
+        values = pd.Series (sum (values, list ()))
+    if args.mtx.lower ().endswith ("h5ad"):
+        values = pd.Series (np.array (adata[samples].X.data.tolist ()).reshape ((1, -1))[0])
     default = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
                           minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
                           refConcept = concept_cons, consValue = consValue,
@@ -93,27 +126,66 @@ else:
     defaultOutput = default.copy (); defaultOutput["label_values"] = outputLabels; allConcepts = {defaultName: defaultOutput}
     del values
     if direction == "sample":
-        maxSplit = 2
-        for sample in samples:
-            with open (args.mtx) as f:
-                values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]], index = features)
-            values[values == ""] = np.nan; values = values.astype (float); maxSplit += 1 
-            concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
-                                  refConcept = concept_cons, consValue = consValue,
-                                  useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
-            if concept["number_fuzzy_sets"] == 0:
-                concept = default.copy ()
-            else:
-                outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels; allConcepts[sample] = outputConcept
-            memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-            if not memberships.empty:
-                memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
+        if args.mtx.lower ().endswith ("tsv"):
+            maxSplit = 2
+            for sample in samples:
+                if sample == samples[-1]:
+                    with open (args.mtx) as f:
+                        values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-1] for line in f.readlines ()[1:]],
+                                            index = features)
+                else:
+                    with open (args.mtx) as f:
+                        values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]],
+                                            index = features)
+                values[values == ""] = np.nan; values = values.astype (float); maxSplit += 1 
+                concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
+                                      minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                      refConcept = concept_cons, consValue = consValue,
+                                      useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
+                if concept["number_fuzzy_sets"] == 0:
+                    concept = default.copy ()
+                else:
+                    outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels; allConcepts[sample] = outputConcept
+                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+                if not memberships.empty:
+                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
+        if args.mtx.lower ().endswith ("h5ad"):
+            for sample in samples:
+                values = adata[sample].to_df ().loc[sample]
+                concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
+                                      minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                      refConcept = concept_cons, consValue = consValue,
+                                      useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
+                if concept["number_fuzzy_sets"] == 0:
+                    concept = default.copy ()
+                else:
+                    outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels; allConcepts[sample] = outputConcept
+                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+                if not memberships.empty:
+                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
     else:
-        with open (args.mtx) as f:
-            _ = f.readline ()
+        if args.mtx.lower ().endswith ("tsv"):
+            with open (args.mtx) as f:
+                _ = f.readline ()
+                for feature in features:
+                    values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]], index = samples)
+                    if direction == "feature":
+                        concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
+                                              minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                              refConcept = concept_cons, consValue = consValue,
+                                              useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
+                        if concept["number_fuzzy_sets"] == 0:
+                            concept = default.copy ()
+                        else:
+                            outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels; allConcepts[feature] = outputConcept
+                    else:
+                        concept = default.copy ()
+                    memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+                    if not memberships.empty:
+                        memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{feature}.tsv"), sep = "\t")
+        if args.mtx.lower ().endswith ("h5ad"):
             for feature in features:
-                values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]], index = samples)
+                values = adata[:, feature].to_df ()[feature]
                 if direction == "feature":
                     concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
                                           minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,

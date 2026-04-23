@@ -127,9 +127,14 @@ elif direction == "sample":
     if args.mtx.lower ().endswith ("tsv"):
         maxSplit = 2
         for sample in samples:
-            with open (args.mtx) as f:
-                values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]],
-                                    index = features)
+            if sample == samples[-1]:
+                with open (args.mtx) as f:
+                    values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-1] for line in f.readlines ()[1:]],
+                                        index = features)
+            else:
+                with open (args.mtx) as f:
+                    values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]],
+                                        index = features)
             values[values == ""] = np.nan; values = values.astype (float); maxSplit += 1
             detailedConcept[sample] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                                                   minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
