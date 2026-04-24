@@ -5,9 +5,7 @@ import os
 import json
 import argparse
 import numpy as np
-import pandas as pd
-import scanpy as sc
-from helper_functions import fuzzify, getConcept
+from helper_functions import getFuzzy
 
 # python main_fuzzifier.py --mtx rawValueMatrix --concept fuzzyConcept(s) --config config --output outputDirectory
 
@@ -36,171 +34,15 @@ maxLevelPct = const.get (maxLevelPct.lower (), 1) if isinstance (maxLevelPct, st
 defaultName = config.get ("key_default_concept", "DEFAULT"); direction = config.get ("fuzzify_per", "feature")
 renameLabels = config.get ("rename_labels", dict ())
 renameLabels = {const.get (val.lower ()): renameLabels[val] for val in renameLabels.keys () if isinstance (val, str)}
-
-if args.mtx.lower ().endswith ("tsv"):
-    with open (args.mtx) as f:
-        samples = f.readline ().strip ("\n").split ("\t")[1:]
-        features = [line.split ("\t")[0] for line in f.readlines ()]
-elif args.mtx.lower ().endswith ("h5ad"):
-    adata = sc.read_h5ad (args.mtx, backed = "r")
-    features = list (adata.var_names); samples = list (adata.obs_names)
-else:
-    raise TypeError
     
 if not os.path.exists (args.output):
     os.makedirs (args.output, exist_ok = True)
 
 if isinstance (list (concepts.values ())[0], dict):
-    default = concepts.get (defaultName, dict ())
-    if direction == "sample":
-        if args.mtx.lower ().endswith ("tsv"):
-            maxSplit = 2
-            for sample in samples:
-                with open (args.mtx) as f:
-                    values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]], index = features)
-                values[values == ""] = np.nan; values = values.astype (float); concept = concepts.get (sample, default).copy (); maxSplit += 1
-                concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
-                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-                if not memberships.empty:
-                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
-        if args.mtx.lower ().endswith ("h5ad"):
-            for sample in samples:
-                values = adata[sample].to_df ().loc[sample].replace (0, np.nan).dropna ()
-                concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
-                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-                if not memberships.empty:
-                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
-    else:
-        if args.mtx.lower ().endswith ("tsv"):
-            with open (args.mtx) as f:
-                _ = f.readline ()
-                for feature in features:
-                    values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]], index = samples)
-                    if direction == "feature":
-                        concept = concepts.get (feature, default).copy ()
-                    else:
-                        concept = default.copy ()
-                    concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
-                    memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-                    if not memberships.empty:
-                        memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{feature}.tsv"), sep = "\t")
-        if args.mtx.lower ().endesith ("h5ad"):
-            for feature in features:
-                values = adata[:, feature].to_df ()[feature].replace (0, np.nan).dropna ()
-                if direction == "feature":
-                    concept = concepts.get (feature, default).copy ()
-                else:
-                    concept = default.copy ()
-                concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
-                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-                if not memberships.empty:
-                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{feature}.tsv"), sep = "\t")
+    getFuzzy (args.mtx, direction, concepts, defaultName, renameLabels, args.output, deriveConcepts = False)
 else:
-    param_keys = ["value_type", "number_fuzzy_sets", "label_values",
-                  "fit_Gaussian_curve", "use_scipy_optimization", "band_width_factor"]
-    consType = concepts.get ("value_type", "fixed"); consValue = list (); bwFct = concepts.get ("band_width_factor", 1)
-    outputLabels = concepts.get ("label_values", list ())
-    labels = [const.get (x.lower ()) if isinstance (x, str) else x for x in outputLabels]
-    renameFS = [key for key in concepts.keys () if key not in param_keys]
-    numFS = concepts.get ("number_fuzzy_sets", len (renameFS)); concept_cons = [concepts[FS][0] for FS in renameFS]
-    useFit = concepts.get ("fit_Gaussian_curve", False); useOptimize = concepts.get ("use_scipy_optimization", False)
-    if consType == "proportion":
-        consValue = set ()
-        for FS in renameFS:
-            params, typeFS, _ = concepts[FS]
-            if typeFS == "trapezoidal":
-                consValue |= set (params)
-            else:
-                consValue |= {params[0]}
-    basicInfo = {"number_fuzzy_sets": numFS, "label_values": labels}
-    if args.mtx.lower ().endswith ("tsv"):
-        with open (args.mtx) as f:
-            values = [[np.nan if x == "" else float (x) for x in line.strip ("\n").split ("\t")[1:]] for line in f.readlines ()[1:]]
-        values = pd.Series (sum (values, list ()))
-    if args.mtx.lower ().endswith ("h5ad"):
-        values = pd.Series (np.array (adata[samples].X.data.tolist ()).reshape ((1, -1))[0])
-    default = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                          minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
-                          refConcept = concept_cons, consValue = consValue,
-                          useFit = False, useOptimize = False, bwFct = bwFct)
-    defaultOutput = default.copy (); defaultOutput["label_values"] = outputLabels; allConcepts = {defaultName: defaultOutput}
-    del values
-    if direction == "sample":
-        if args.mtx.lower ().endswith ("tsv"):
-            maxSplit = 2
-            for sample in samples:
-                if sample == samples[-1]:
-                    with open (args.mtx) as f:
-                        values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-1] for line in f.readlines ()[1:]],
-                                            index = features)
-                else:
-                    with open (args.mtx) as f:
-                        values = pd.Series ([line.strip ("\n").split ("\t", maxsplit = maxSplit)[-2] for line in f.readlines ()[1:]],
-                                            index = features)
-                values[values == ""] = np.nan; values = values.astype (float); maxSplit += 1 
-                concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                                      minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
-                                      refConcept = concept_cons, consValue = consValue,
-                                      useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
-                if concept["number_fuzzy_sets"] == 0:
-                    concept = default.copy ()
-                else:
-                    outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels; allConcepts[sample] = outputConcept
-                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-                if not memberships.empty:
-                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
-        if args.mtx.lower ().endswith ("h5ad"):
-            for sample in samples:
-                values = adata[sample].to_df ().loc[sample]
-                concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                                      minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
-                                      refConcept = concept_cons, consValue = consValue,
-                                      useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
-                if concept["number_fuzzy_sets"] == 0:
-                    concept = default.copy ()
-                else:
-                    outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels; allConcepts[sample] = outputConcept
-                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-                if not memberships.empty:
-                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
-    else:
-        if args.mtx.lower ().endswith ("tsv"):
-            with open (args.mtx) as f:
-                _ = f.readline ()
-                for feature in features:
-                    values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]], index = samples)
-                    if direction == "feature":
-                        concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                                              minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
-                                              refConcept = concept_cons, consValue = consValue,
-                                              useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
-                        if concept["number_fuzzy_sets"] == 0:
-                            concept = default.copy ()
-                        else:
-                            outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels; allConcepts[feature] = outputConcept
-                    else:
-                        concept = default.copy ()
-                    memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-                    if not memberships.empty:
-                        memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{feature}.tsv"), sep = "\t")
-        if args.mtx.lower ().endswith ("h5ad"):
-            for feature in features:
-                values = adata[:, feature].to_df ()[feature]
-                if direction == "feature":
-                    concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                                          minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
-                                          refConcept = concept_cons, consValue = consValue,
-                                          useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
-                    if concept["number_fuzzy_sets"] == 0:
-                        concept = default.copy ()
-                    else:
-                        outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels; allConcepts[feature] = outputConcept
-                else:
-                    concept = default.copy ()
-                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
-                if not memberships.empty:
-                    memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{feature}.tsv"), sep = "\t")
-    with open (os.path.join (args.output, "concepts_detailed.json"), "w", encoding = "utf-8") as f:
-        json.dump (allConcepts, f, ensure_ascii = False, indent = 4, allow_nan = True)
+    getFuzzy (args.mtx, direction, concepts, defaultName, renameLabels, args.output, deriveConcepts = True,
+              minLevelCons = minLevelCons, minLevelPct = minLevelPct,
+              maxLevelCons = maxLevelCons, maxLevelPct = maxLevelPct)
 
 
