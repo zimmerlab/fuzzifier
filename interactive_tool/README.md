@@ -28,19 +28,17 @@ Two main methods are available for fuzzy concept derivation, either from constra
 
 Two types of membership functions are currently implemented. For one trapezoidal membership function, the four x-coordinates of the trapezoid are required as function parameter, while the Gaussian membership function requires parameter $\mu$ and $\sigma$. These can be acquired either from the mean and standard deviation, or from fitting a Gaussian function to the underlying raw value distribution. No Gaussian function will be fitted for the whole matrix. Moreover, for the $\sigma$ of a Gaussian membership function, the function parameter is displayed as a factor to be multiplied with $\sigma$.
 
+For each fuzzy set, the name (fuzzy variable), type of membership function and the color in the visualization can be customized.
+
 #### Fuzzy Concepts from Constraints
 
 By selecting the number of desired fuzzy concepts and clicking `Estimate` to proceed, a default fuzzy concept with trapezoidal membership functions is derived. In this case, all fuzzy sets are expected to have the same percentage of raw values with their highest fuzzy values there. The visualization is generated from the percentiles according to the percent inputs. The raw values are updated on change of the corresponding percents and the selected feature for visualization. Alternatively, the raw values corresponding to the percents can be manually specified and transferred into percents based on the current raw value distribution by clicking `Value to percent`.
 
-For each fuzzy set, the name (fuzzy variable), type of membership function and the color in the visualization can be customized.
-
-#### Fuzzy Concepts from Fitting (Default Fuzzification)
+#### Fuzzy Concepts from Fitting
 
 A Gaussian function is fitted to the raw value distribution of each feature in the raw value matrix, while the function parameters $\mu$ and $\sigma$ of the whole raw value matrix are approximated from the mean and standard deviation directly. It is also optional for the features to have mean and standard deviation directly as the fitted $\mu$ and $\sigma$ by setting band width factor to 0.
 
 If the parameters are to be fitted, it is calculated on the density curve estimated from a given band width factor after clicking `Estaimate`. Then a fuzzy concept symmetric to $\mu$ is defined based on the fitted Gaussian parameters, with the fitted Gaussian membership function in the middle and the same number of trapezoidal membership functions on both sides as specified by the user. The fitted Gaussian function lies in the middle, while all other derived membership functions are trapezoids. The x-coordinates of the trapezoids and $\mu$ of the fitted Gaussian function is displayed as z-scores, namely $\frac{x-\mu}{\sigma}$.
-
-In comparison to the other derivation method, it is not allowed to change the type of membership functions here.
 
 ### Output Files and Formats
 
