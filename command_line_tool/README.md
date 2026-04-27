@@ -10,7 +10,7 @@ The tool consists of two parts. First, fuzzy concepts are derived from the raw v
 
 Fuzzy concepts are defined for the raw values using either of the two approaches per feature (row) or per sample (column). Otherwise it is derived based on all values in the raw value matrix, which is always calculated as the backup fuzzy concept in default.
 
-Two types of membership functions are currently implemented. For one trapezoidal membership function, the four x-coordinates of the trapezoid are required as function parameter, while the Gaussian membership function requires parameter $\mu$ and $\sigma$. These can be acquired either from the mean and standard deviation, or from fitting a Gaussian function to the underlying raw value distribution. No Gaussian function will be fitted for the whole matrix.
+Two types of membership functions are currently implemented. For one trapezoidal membership function, the four x-coordinates of the trapezoid are required as function parameter, while the Gaussian membership function requires parameter $\mu$ and $\sigma$. These can be acquired either from the mean and standard deviation, or from fitting a Gaussian function to the underlying raw value distribution. No Gaussian function will be fitted for the whole matrix. Moreover, for the $\sigma$ of a Gaussian membership function, the function parameter is displayed as a factor to be multiplied with $\sigma$.
 
 
 ### Input Files and Formats
@@ -21,7 +21,7 @@ Two input files are necessary, namely the raw value matrix `mtx` and the config 
 
 - `config`: Config file containing detailed parameter settings in `.json` format.
 
-    - `label_values`: List of specific values to be excluded from fuzzy concept definition, such as $\pm$ $\infty$, zero and NA.
+    - `label_values`: List of specific values to be excluded from fuzzy concept definition, such as $\pm\infty$, zero and NA.
 
     - Cutoff for minimally accepted values: All values no larger than this cutoff are regarded as noise and discarded in the fuzzy concept definition. Two types of cutoffs are available, and the larger one is chosen as cutoff.
 
@@ -62,7 +62,7 @@ Two output files are generated. `concepts_detailed.json` contains all fuzzy conc
 
 - `number_fuzzy_sets`: Number of fuzzy sets, excluding labeling fuzzy sets for specific values or noise.
 
-- `label_values`: List of specific values that should be excluded from fuzzy concept definition. $\pm$ $\infty$ and NaN are stored as strings.
+- `label_values`: List of specific values that should be excluded from fuzzy concept definition. $\pm\infty$ and NaN are stored as strings.
 
 - `MIN-NOISE`: Cutoff for the smallest raw value allowed for fuzzy concept definition. It is calculated from the maximum of the constant cutoff and the percentile cutoff.
 
@@ -76,7 +76,7 @@ Two output files are generated. `concepts_detailed.json` contains all fuzzy conc
 
 - `number_of_fuzzy_sets`: Number of fuzzy sets, excluding labeling fuzzy sets for specific values or noise.
 
-- `label_values`: List of specific values that should be excluded from fuzzy concept definition. $\pm$ $\infty$ and NaN are stored as strings.
+- `label_values`: List of specific values that should be excluded from fuzzy concept definition. $\pm\infty$ and NaN are stored as strings.
 
 - `fit_Gaussian_curve`: Whether the required $\mu$ and $\sigma$ are approximated from the mean and standard deviation, or derived from fitting of a Gaussian function.
 
