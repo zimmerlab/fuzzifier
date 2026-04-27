@@ -29,14 +29,24 @@ app_ui = ui.page_fluid (
                             ui.input_switch ("addNoise", "Add category for noise?", False),
                             ui.panel_conditional (
                                 "input.addNoise === true",
-                                ui.input_numeric ("minNoiseLevel", "Values no smaller than:", min = 0, max = 0, value = 0, step = 0.01),
-                                ui.input_numeric ("maxNoiseLevel", "Values no larger than:", min = 0, max = 0, value = 0, step = 0.01)
+                                ui.input_radio_buttons ("cutoffType", "", choices = {"cons": "Constant cutoffs", "pct": "Percent cutoffs"},
+                                                        selected = "cons", inline = True),
+                                ui.panel_conditional (
+                                    "input.cutoffType === 'cons'",
+                                    ui.input_numeric ("minNoiseLevel", "Values no smaller than:", min = 0, max = 0, value = 0, step = 0.01),
+                                    ui.input_numeric ("maxNoiseLevel", "Values no larger than:", min = 0, max = 0, value = 0, step = 0.01)
+                                ),
+                                ui.panel_conditional (
+                                    "input.cutoffType === 'pct'",
+                                    ui.input_numeric ("minNoiseLevelPct", "Percent no smaller than:", min = 0, max = 1, value = 0, step = 0.05),
+                                    ui.input_numeric ("maxNoiseLevelPct", "Percent no larger than:", min = 0, max = 1, value = 1, step = 0.05)
+                                )
                             )
                         ),
                         ui.card (
                             ui.layout_columns (
                                 ui.input_action_button ("invertMtx", "Invert", width = "150px"),
-                                ui.input_action_button ("checkInput", "Confirm and proceed", width = "150px")
+                                ui.input_action_button ("checkInput", "Proceed", width = "150px")
                             )
                         )
                     ),
@@ -57,19 +67,6 @@ app_ui = ui.page_fluid (
                                     ui.output_plot ("crispDistribution", width = "700px", height = "450px"),
                                     style = "display: flex; justify-content: center;"
                                 )
-                            ),
-                            ui.nav_panel (
-                                "Distrubution per Feature/Sample",
-                                ui.layout_columns (
-                                    ui.div (
-                                        ui.output_plot ("boxFeature", width = "500px", height = "400px"),
-                                        style = "display: flex; justify-content: center;"
-                                    ),
-                                    ui.div (
-                                        ui.output_plot ("boxSample", width = "500px", height = "400px"),
-                                        style = "display: flex; justify-content: center;"
-                                    )
-                                )
                             )
                         )
                     )
@@ -84,7 +81,7 @@ app_ui = ui.page_fluid (
                             ui.sidebar (
                                 ui.card (
                                     ui.div (
-                                        ui.input_action_button ("val2pct", "Value to percentile", width = "250px"),
+                                        ui.input_action_button ("val2pct", "Value to percent", width = "200px"),
                                         style = "display: flex; justify-content: center;"
                                     ),
                                     id = "FS0_cons"
@@ -249,7 +246,7 @@ app_ui = ui.page_fluid (
                         ui.br (),
                         "Select minimal and maximal value range:",
                         ui.input_slider ("zoom_visual", "", min = 0, max = 0, step = 1, value = (0, 0), width = "300px"),
-                        ui.input_slider ("numBins_visual", "Number of bins:", min = 5, max = 100, step = 5, value = 50, width = "300px", ticks = True),
+                        ui.input_slider ("numBins_visual", "Number of bins:", min = 0, max = 100, step = 5, value = 50, width = "300px", ticks = True),
                         "Select feature from fuzzy concepts:",
                         ui.br (),
                         ui.input_selectize ("viewFeature_concept_visual", "", choices = {"--": "--"}, selected = "--", multiple = False, remove_button = True),
@@ -280,19 +277,19 @@ def server (input, output, session):
     plotRangeGlobal = reactive.value (list ())
     rangeGlobal = reactive.value (list ())
     addNoiseLeft = reactive.value (False)
-    noiseCutoffLeft = reactive.value (-np.inf)
+    noiseCutoffLeft = reactive.value (pd.Series (dtype = float))
     addNoiseRight = reactive.value (False)
-    noiseCutoffRight = reactive.value (np.inf)
+    noiseCutoffRight = reactive.value (pd.Series (dtype = float))
     labelValues = reactive.value (list ())
     pctProp = reactive.value (pd.DataFrame (dtype = float))
     allStd = reactive.value (pd.Series (dtype = float))
     curveFit = reactive.value (pd.DataFrame (dtype = float))
     numCards_cons = reactive.value (0)
     numCards_default = reactive.value (0)
-    defaultColors = reactive.value (["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple",
-                                     "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan",
-                                     "blue", "orange", "green", "red", "purple",
-                                     "brown", "pink", "gray", "olive", "cyan"])
+    defaultColors = reactive.value (["blue", "orange", "green", "red", "purple",
+                                     "brown", "pink", "gray", "olive", "cyan",
+                                     "light blue", "light orange", "light green", "light red", "light purple",
+                                     "light brown", "light pink", "light gray", "light olive", "light cyan"])
     defaultColorCodes = reactive.value (["#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
                                          "#8C564B", "#E377C2", "#7F7F7F", "#BCBD22", "#17BECF",
                                          "#AEC7E8", "#FFBB78", "#98DF8A", "#FF9896", "#C5B0D5",
@@ -323,25 +320,39 @@ def server (input, output, session):
 
     @reactive.effect
     def _ ():
-        if len (plotRangeGlobal.get ()) != 2:
-            addNoiseLeft.set (False); noiseCutoffLeft.set (-np.inf)
-            addNoiseRight.set (False); noiseCutoffRight.set (np.inf)
+        if matrix.get ().empty or len (plotRangeGlobal.get ()) != 2:
+            addNoiseLeft.set (False); noiseCutoffLeft.set (pd.Series (dtype = float))
+            addNoiseRight.set (False); noiseCutoffRight.set (pd.Series (dtype = float))
             return
         if input.addNoise ():
+            mtx = matrix.get ().replace (labelValues.get () + [-np.inf, np.inf], np.nan)
             noiseRepLeft, noiseRepRight = plotRangeGlobal.get ()
             minLevel = input.minNoiseLevel (); minLevel = noiseRepLeft if minLevel is None else minLevel
             maxLevel = input.maxNoiseLevel (); maxLevel = noiseRepRight if maxLevel is None else maxLevel
-            if minLevel > noiseRepLeft:
-                addNoiseLeft.set (True); noiseCutoffLeft.set (minLevel)
+            minLevelPct = input.minNoiseLevelPct (); maxLevelPct = input.maxNoiseLevelPct ()
+            percentiles = pd.DataFrame ({"minimum": noiseRepLeft, "maximum": noiseRepRight},
+                                        index = list (mtx.index) + ["ALL"])
+            if minLevelPct > 0:
+                percentiles.loc[mtx.index, "minimum"] = mtx.quantile (minLevelPct, axis = 1)
+                percentiles.loc["ALL", "minimum"] = mtx.melt ()["value"].dropna ().quantile (minLevelPct) 
+            if maxLevelPct < 1:
+                percentiles.loc[mtx.index, "maximum"] = mtx.quantile (maxLevelPct, axis = 1)
+                percentiles.loc["ALL", "maximum"] = mtx.melt ()["value"].dropna ().quantile (maxLevelPct)
+            if minLevel > noiseRepLeft or minLevelPct > 0:
+                addNoiseLeft.set (True)
+                noiseCutoffLeft.set (pd.Series ([max (minLevel, x) for x in percentiles["minimum"]],
+                                                index = percentiles.index).round (3))
             else:
-                addNoiseLeft.set (False); noiseCutoffLeft.set (-np.inf)
-            if maxLevel < noiseRepRight:
-                addNoiseRight.set (True); noiseCutoffRight.set (maxLevel)
+                addNoiseLeft.set (False); noiseCutoffLeft.set (pd.Series (dtype = float))
+            if maxLevel < noiseRepRight or maxLevelPct < 1:
+                addNoiseRight.set (True)
+                noiseCutoffRight.set (pd.Series ([min (maxLevel, x) for x in percentiles["maximum"]],
+                                                 index = percentiles.index).round (3))
             else:
-                addNoiseRight.set (False); noiseCutoffRight.set (np.inf)
+                addNoiseRight.set (False); noiseCutoffRight.set (pd.Series (dtype = float))
         else:
-            addNoiseLeft.set (False); noiseCutoffLeft.set (-np.inf)
-            addNoiseRight.set (False); noiseCutoffRight.set (np.inf)
+            addNoiseLeft.set (False); noiseCutoffLeft.set (pd.Series (dtype = float))
+            addNoiseRight.set (False); noiseCutoffRight.set (pd.Series (dtype = float))
 
 
     @render.data_frame
@@ -350,9 +361,13 @@ def server (input, output, session):
         labels = labelValues.get (); noiseRep = plotRangeGlobal.get ()
         if len (noiseRep) == 2:
             if addNoiseLeft.get ():
-                mtx = mtx.mask (mtx.replace (labels + [-np.inf], np.nan) <= minLevel, noiseRep[0])
+                tmp = mtx.replace (labels + [-np.inf], np.nan)
+                mask = pd.DataFrame ({idx: tmp.loc[idx] <= minLevel.get (idx, -np.inf) for idx in mtx.index}).T
+                mtx = mtx.mask (mask, noiseRep[0])
             if addNoiseRight.get ():
-                mtx = mtx.mask (mtx.replace (labels + [np.inf], np.nan) >= maxLevel, noiseRep[1])
+                tmp = mtx.replace (labels + [np.inf], np.nan)
+                mask = pd.DataFrame ({idx: tmp.loc[idx] >= maxLevel.get (idx, np.inf) for idx in mtx.index}).T
+                mtx = mtx.mask (mask, noiseRep[1])
         else:
             noiseRep = None
         summary = getMtxSummary (mtx, labels, noiseRep = noiseRep)
@@ -366,7 +381,8 @@ def server (input, output, session):
             return
         mtx = matrix.get ().replace (labelValues.get () + [-np.inf, np.inf], np.nan).melt ()["value"].dropna ()
         mtx = mtx[(mtx >= visualRange[0]) & (mtx <= visualRange[1])]
-        minLevel = noiseCutoffLeft.get (); maxLevel = noiseCutoffRight.get ()
+        minLevel = noiseCutoffLeft.get ().get ("ALL", -np.inf)
+        maxLevel = noiseCutoffRight.get ().get ("ALL", np.inf)
         fig, ax = plt.subplots (1, figsize = (15, 6))
         if input.numBins () != 0:
             ax.hist (mtx, bins = input.numBins ())
@@ -408,9 +424,11 @@ def server (input, output, session):
         else:
             mtx = matrix.get ().replace (labelValues.get () + [-np.inf, np.inf], np.nan)
             if addNoiseLeft.get ():
-                mtx = mtx.mask (mtx <= noiseCutoffLeft.get ())
+                minLevel = noiseCutoffLeft.get ()
+                mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] <= minLevel.get (idx, -np.inf) for idx in mtx.index}).T)
             if addNoiseRight.get ():
-                mtx = mtx.mask (mtx >= noiseCutoffRight.get ())
+                maxLevel = noiseCutoffRight.get ()
+                mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] >= maxLevel.get (idx, np.inf) for idx in mtx.index}).T)
             xMin = np.floor (mtx.min (axis = None, skipna = True)) - 1; xMax = np.ceil (mtx.max (axis = None, skipna = True)) + 1
             rangeGlobal.set ([xMin, xMax])
             propTicks = mtx.quantile (np.linspace (0, 1, 1001), axis = 1, numeric_only = True).T
@@ -422,54 +440,6 @@ def server (input, output, session):
             ui.update_selectize ("viewFeature_cons", choices = ["ALL"] + featureList)
             ui.update_selectize ("viewFeature_default", choices = ["ALL"] + featureList)
             ui.notification_show ("Crisp Value Matrix Done", type = "message", duration = 1.5)
-
-
-    @render.plot
-    def boxFeature ():
-        mtx = matrix.get ()
-        if mtx.empty:
-            return
-        labels = labelValues.get (); mtx = mtx.replace (labels + [-np.inf, np.inf], np.nan)
-        if addNoiseLeft:
-            mtx = mtx.mask (mtx <= noiseCutoffLeft.get ())
-        if addNoiseRight:
-            mtx = mtx.mask (mtx >= noiseCutoffRight.get ())
-        ordered = mtx.mean (axis = 1, skipna = True).sort_values ()
-        percentiles = mtx.quantile ([0.25, 0.5, 0.75], axis = 1, numeric_only = True)[ordered.index]
-        fig, ax = plt.subplots (1, figsize = (5, 8))
-        for q in [0.25, 0.5, 0.75]:
-            ax.scatter (range (mtx.shape[0]), percentiles.loc[q], s = 3, label = f"{q:.0%}")
-        ax2 = ax.twinx (); ax2.plot (ordered, color = "black")
-        ax.set_xticks (list ()); ax2.set_yticks (list ()); ax2.set_yticks (list ())
-        ax.tick_params (axis = "y", which = "major", labelsize = 8)
-        ax.set_xlabel ("sorted by average raw value per feature", size = 10)
-        ax.set_ylabel ("quantile", size = 10); ax2.set_ylabel ("average raw value per feature", size = 10)
-        ax.legend (loc = "upper left", facecolor = "white"); fig.tight_layout ()
-        return fig
-
-
-    @render.plot
-    def boxSample ():
-        mtx = matrix.get ()
-        if mtx.empty:
-            return
-        labels = labelValues.get (); mtx = mtx.replace (labels + [-np.inf, np.inf], np.nan)
-        if addNoiseLeft:
-            mtx = mtx.mask (mtx <= noiseCutoffLeft.get ())
-        if addNoiseRight:
-            mtx = mtx.mask (mtx >= noiseCutoffRight.get ())
-        ordered = mtx.mean (axis = 0, skipna = True).sort_values ()
-        percentiles = mtx.quantile ([0.25, 0.5, 0.75], axis = 0, numeric_only = True)[ordered.index]
-        fig, ax = plt.subplots (1, figsize = (5, 8))
-        for q in [0.25, 0.5, 0.75]:
-            ax.scatter (range (mtx.shape[1]), percentiles.loc[q], s = 3, label = f"{q:.0%}")
-        ax2 = ax.twinx (); ax2.plot (ordered, color = "black")
-        ax.set_xticks (list ()); ax2.set_yticks (list ()); ax2.set_yticks (list ())
-        ax.tick_params (axis = "y", which = "major", labelsize = 8)
-        ax.set_xlabel ("sorted by average raw value per sample", size = 10)
-        ax.set_ylabel ("quantile", size = 10); ax2.set_ylabel ("average raw value per sample", size = 10)
-        ax.legend (loc = "upper left", facecolor = "white"); fig.tight_layout ()
-        return fig
 
 
     @reactive.effect
@@ -629,8 +599,9 @@ def server (input, output, session):
         if mtx.empty or len (xRange) != 2 or len (valueRange) != 2:
             return
         mtx = mtx.replace (labelValues.get () + [-np.inf, np.inf], np.nan)
-        minLevel = noiseCutoffLeft.get (); maxLevel = noiseCutoffRight.get ()
         widths = allStd.get (); feature = input.viewFeature_cons ()
+        minLevel = noiseCutoffLeft.get ().get (feature, -np.inf)
+        maxLevel = noiseCutoffRight.get ().get (feature, np.inf)
         fig, ax = plt.subplots (figsize = (8, 5))
         if feature == "ALL":
             pltData = mtx.melt ()["value"]
@@ -705,15 +676,18 @@ def server (input, output, session):
         mtx = matrix.get ().replace (labelValues.get (), np.nan); bwFct = input.bwFactor ()
         if mtx.empty:
             return
-        if addNoiseLeft.get ():
-            mtx = mtx.mask (mtx <= noiseCutoffLeft.get ())
-        if addNoiseRight.get ():
-            mtx = mtx.mask (mtx >= noiseCutoffRight.get ())
+        if addNoiseLeft:
+           minLevel = noiseCutoffLeft.get ()
+           mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] <= minLevel.get (idx, -np.inf) for idx in mtx.index}).T)
+        if addNoiseRight:
+            maxLevel = noiseCutoffRight.get ()
+            mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] >= maxLevel.get (idx, np.inf) for idx in mtx.index}).T)
         with ui.Progress () as p:
             p.set (message = "Deriving", detail = "This will take a while...")
             fit = pd.DataFrame (columns = ["mu", "sigma"], dtype = float)
             for feature in mtx.index:
-                fit.loc[feature] = dict (zip (["mu", "sigma"], fitMode (mtx.loc[feature], bwFct = bwFct, useFit = (bwFct > 0))))
+                fit.loc[feature] = dict (zip (["mu", "sigma"], fitMode (mtx.loc[feature], bwFct = bwFct,
+                                                                        useFit = (bwFct > 0))))
             mtx = mtx.melt ()["value"].dropna ()
             fit.loc["ALL"] = dict (zip (["mu", "sigma"], fitMode (mtx, bwFct = bwFct, useFit = False)))
             curveFit.set (fit.round (3))
@@ -794,8 +768,9 @@ def server (input, output, session):
         if mtx.empty or len (xRange) != 2:
             return
         mtx = mtx.replace (labelValues.get () + [-np.inf, np.inf], np.nan)
-        minLevel = noiseCutoffLeft.get (); maxLevel = noiseCutoffRight.get ()
         fit = curveFit.get (); feature = input.viewFeature_default ()
+        minLevel = noiseCutoffLeft.get ().get (feature, -np.inf)
+        maxLevel = noiseCutoffRight.get ().get (feature, np.inf)
         fig, ax = plt.subplots (figsize = (8, 5))
         if feature == "ALL":
             pltData = mtx.melt ()["value"]
@@ -874,12 +849,16 @@ def server (input, output, session):
     def downloadConstraints ():
         if numCards_cons.get () == 0 and numCards_default.get () == 0:
             return
-        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
-        option = input.downloadOption (); labels = labelValues.get (); outputLabels = [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]
+        option = input.downloadOption (); constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
+        outputLabels = [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labelValues.get ()]
         if option == "cons":
             num = numCards_cons.get (); typeFS = [input[f"typeFS{idx}_cons"] () for idx in range (1, num + 1)]
-            content = {"value_type": "proportion", "number_fuzzy_sets": num, "label_values": outputLabels,
-                       "fit_Gaussian_curve": False, "use_scipy_optimization": False, "band_width_factor": 1}
+            if input.fuzzyBy_cons () == "feature":
+                content = {"value_type": "proportion", "number_fuzzy_sets": num, "label_values": outputLabels,
+                           "fit_Gaussian_curve": False, "use_scipy_optimization": False, "band_width_factor": 1}
+            else:
+                content = {"value_type": "fixed", "number_fuzzy_sets": num, "label_values": outputLabels,
+                           "fit_Gaussian_curve": False, "use_scipy_optimization": False, "band_width_factor": 1}
         elif option == "default":
             num = numCards_default.get (); numSide = input.numFS_default ()
             typeFS = ["trap"] * numSide + ["gauss"] + ["trap"] * numSide
@@ -901,7 +880,6 @@ def server (input, output, session):
             percentage = getSubarea (0, params[numSide][1], params, minLevel = -np.inf, maxLevel = np.inf)
         for i in range (num):
             content[names[i]] = [params[i], typeFS[i], colors[i], round (percentage[i], 5)]
-        print (content)
         outputStr = json.dumps (content, indent = 4)
         yield outputStr
         ui.notification_show ("Download Completed", type = "message", duration = 2)
@@ -912,8 +890,7 @@ def server (input, output, session):
         if numCards_cons.get () == 0 and numCards_default.get () == 0:
             return
         option = input.downloadOption (); defaultName = input.defaultName () if input.defaultName () != "" else "ALL"
-        featureList = [defaultName] + itemList.get ()["feature"]
-        constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}; labels = set (labelValues.get ()) - set (plotRangeGlobal.get ())
+        featureList = [defaultName] + itemList.get ()["feature"]; constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
         if option == "cons":
             num = numCards_cons.get (); ticks = pctProp.get ().rename (index = {"ALL": defaultName})
             typeList = list (); names = list (); colors = list (); pctConcept = list ()
@@ -924,14 +901,11 @@ def server (input, output, session):
                                         int (10 * input[f"coord{idx}_c_cons"] ()), int (10 * input[f"coord{idx}_d_cons"] ())])
                 else:
                     pctConcept.append ([10 * input[f"center{idx}_cons"] (), input[f"width{idx}_cons"] ()])
-            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
-            if np.isfinite (noiseCutoffLeft.get ()):
-                basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
-            if np.isfinite (noiseCutoffRight.get ()):
-                basicInfo["MAX-NOISE"] = noiseCutoffRight.get ()
+            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labelValues.get ()]}
             with ui.Progress () as p:
                 p.set (message = "Download Running", detail = "This will take a while...")
-                output = generateOutputFromConstraint (featureList, pctConcept, ticks, allStd.get (), basicInfo, typeList, names, colors)
+                output = generateOutputFromConstraint (featureList, pctConcept, ticks, allStd.get (), noiseCutoffLeft.get (), noiseCutoffRight.get (),
+                                                       basicInfo, typeList, names, colors)
                 outputStr = json.dumps (output, indent = 4)
                 yield outputStr
             ui.notification_show ("Download Completed", type = "message", duration = 2)
@@ -947,11 +921,7 @@ def server (input, output, session):
                     typeList.append ("trap")
                     zConcept.append ([input[f"coord{idx}_a_default"] (), input[f"coord{idx}_b_default"] (),
                                       input[f"coord{idx}_c_default"] (), input[f"coord{idx}_d_default"] ()])
-            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]}
-            if np.isfinite (noiseCutoffLeft.get ()):
-                basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
-            if np.isfinite (noiseCutoffRight.get ()):
-                basicInfo["MAX-NOISE"] = noiseCutoffRight.get ()
+            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labelValues.get ()]}
             allRanges = matrix.get ().replace (labelValues.get (), np.nan)
             if addNoiseLeft.get ():
                 allRanges = allRanges.mask (allRanges <= noiseCutoffLeft.get ())
@@ -961,7 +931,8 @@ def server (input, output, session):
             allRanges = allRanges.replace (np.nan, 0); allRanges.loc[defaultName] = dict (zip (["min", "max"], rangeGlobal.get ()))
             with ui.Progress () as p:
                 p.set (message = "Download Running", detail = "This will take a while...")
-                output = generateOutputFromDefault (featureList, zConcept, fit, allRanges, basicInfo, typeList, names, colors)
+                output = generateOutputFromDefault (featureList, zConcept, fit, allRanges, noiseCutoffLeft.get (), noiseCutoffRight.get (),
+                                                    basicInfo, typeList, names, colors)
                 outputStr = json.dumps (output, indent = 4)
                 yield outputStr
             ui.notification_show ("Download Completed", type = "message", duration = 2)
@@ -1020,10 +991,6 @@ def server (input, output, session):
         step = estimateStep (xMin, xMax); plotRangeGlobal_visual.set ([xMin, xMax])
         ui.update_slider ("zoom_visual", min = xMin + 1, max = xMax - 1, value = (xMin + 1, xMax - 1), step = step)
         basicInfo = {"number_fuzzy_sets": 0, "label_values": list (set (labelValues.get ()) - set (plotRangeGlobal.get ()))}
-        if np.isfinite (noiseCutoffLeft.get ()):
-            basicInfo["MIN-NOISE"] = noiseCutoffLeft.get ()
-        if np.isfinite (noiseCutoffRight.get ()):
-            basicInfo["MAX-NOISE"] = noiseCutoffRight.get ()
         if input.useConcept () == "original":
             defined = input.definedBy ()
             if defined == "cons":
@@ -1038,7 +1005,8 @@ def server (input, output, session):
                     else:
                         gaussIdx.append (idx)
                         tempConcept.append ([int (10 * input[f"center{idx}_cons"] ()), input[f"width{idx}_cons"] ()])
-                concepts = generateOutputFromConstraint (["ALL"] + itemList.get ()["feature"], tempConcept, pctProp.get (), allStd.get (), input.fuzzyBy_cons (),
+                concepts = generateOutputFromConstraint (["ALL"] + itemList.get ()["feature"], tempConcept, pctProp.get (), allStd.get (),
+                                                         input.fuzzyBy_cons (), noiseCutoffLeft.get (), noiseCutoffRight.get (),
                                                          basicInfo, typeList, names, colors)
             else:
                 num = numCards_default.get (); numSide = input.numFS_default (); basicInfo["number_fuzzy_sets"] = num
@@ -1056,7 +1024,7 @@ def server (input, output, session):
                 allRanges = pd.DataFrame ({"min": allRanges.min (axis = 1, skipna = True), "max": allRanges.max (axis = 1, skipna = True)})
                 allRanges = allRanges.replace (np.nan, 0); allRanges.loc["ALL"] = dict (zip (["min", "max"], rangeGlobal.get ()))
                 concepts = generateOutputFromDefault (["ALL"] + itemList.get ()["feature"], tempConcept, curveFit.get (), allRanges,
-                                                      basicInfo, typeList, names, colors)
+                                                      noiseCutoffLeft.get (), noiseCutoffRight.get (), basicInfo, typeList, names, colors)
             concepts_visual.set (concepts)
         else:
             concepts = concepts_visual.get ()

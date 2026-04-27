@@ -259,11 +259,13 @@ def getLines (fuzzyConcept, cutoffs, colors):
 
 
 
-def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, basicInfo, typeList, names, colors):
+def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, minLevels, maxLevels, basicInfo, typeList, names, colors):
     num = len (typeList); output = dict ()
     for feature in featureList:
         params = list (); concept = list (); featureInfo = basicInfo.copy ()
-        minLevel = basicInfo.get ("MIN-NOISE", -np.inf); maxLevel = basicInfo.get ("MAX-NOISE", np.inf)
+        minLevel = minLevels.get (feature, -np.inf); maxLevel = maxLevels.get (feature, np.inf)
+        featureInfo["MIN-NOISE"] = minLevel if np.isfinite (minLevel) else "-Infinity"
+        featureInfo["MAX-NOISE"] = maxLevel if np.isfinite (maxLevel) else "+Infinity"
         xMin = np.floor (ticks.loc[feature, 0]) - 1; xMax = np.ceil (ticks.loc[feature, 1000]) + 1
         for i in range (num):
             if typeList[i] == "trap":
@@ -293,12 +295,14 @@ def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, basicI
 
 
 
-def generateOutputFromDefault (featureList, zConcept, fit, allRanges, basicInfo, typeList, names, colors):
+def generateOutputFromDefault (featureList, zConcept, fit, allRanges, minLevels, maxLevels, basicInfo, typeList, names, colors):
     num = len (typeList); output = dict ()
     for feature in featureList:
         mu, sigma = fit.loc[feature]
         params = list (); concept = list (); featureInfo = basicInfo.copy ()
-        minLevel = basicInfo.get ("MIN-NOISE", -np.inf); maxLevel = basicInfo.get ("MAX-NOISE", np.inf)
+        minLevel = minLevels.get (feature, -np.inf); maxLevel = maxLevels.get (feature, np.inf)
+        featureInfo["MIN-NOISE"] = minLevel if np.isfinite (minLevel) else "-Infinity"
+        featureInfo["MAX-NOISE"] = maxLevel if np.isfinite (maxLevel) else "+Infinity"
         for i in range (num):
             if typeList[i] == "trap":
                 coords = [round (mu + sigma * zConcept[i][0], 3), round (mu + sigma * zConcept[i][1], 3),
