@@ -44,8 +44,7 @@ defaultColors = ["#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
 if method == "constraint":
     consType = params.get ("constraint_type", "fixed"); concept_cons = params["constraints"]; numFS = len (concept_cons)
     if consType == "fixed":
-            consValue = list (); useFit = False; useOptimize = False
-            percentage = [0] * numFS
+        consValue = list (); useFit = False; useOptimize = False; percentage = [0] * numFS
     elif consType == "proportion" or consType == "z-score":
         consValue = set (); widthFct = list ()
         for idx in range (numFS):
@@ -91,8 +90,11 @@ if args.mtx.lower ().endswith ("tsv"):
         values = [[np.nan if x == "" else float (x) for x in line.strip ("\n").split ("\t")[1:]] for line in f.readlines ()[1:]]
     values = pd.Series (sum (values, list ())).round (5)
 elif args.mtx.lower ().endswith ("h5ad"):
-    adata = sc.read_h5ad (args.mtx, backed = "r"); features = list (adata.var_names); samples = list (adata.obs_names)
-    values = pd.Series (np.array (adata[samples].X.data).reshape ((1, -1))[0]).round (5)
+    if direction == "feature":
+        adata = sc.read_h5ad (args.mtx).T; features = list (adata.obs_names); samples = list (adata.var_names)
+    else:
+        adata = sc.read_h5ad (args.mtx); features = list (adata.var_names); samples = list (adata.obs_names)
+    values = pd.Series (np.array (adata[adata.obs_names].X.data).reshape ((1, -1))[0]).round (5)
 else:
     raise TypeError
 default = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
@@ -117,7 +119,7 @@ if direction == "feature":
                                                        widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
     if args.mtx.lower ().endswith ("h5ad"):
         for feature in features:
-            values = pd.Series (np.array (adata[:, feature].X.data).reshape ((1, -1))[0]).round (5)
+            values = pd.Series (np.array (adata[feature].X.data)[0]).round (5)
             detailedConcept[feature] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                                                    minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
                                                    useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
