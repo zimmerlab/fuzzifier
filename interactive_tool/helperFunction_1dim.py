@@ -264,8 +264,8 @@ def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, minLev
     for feature in featureList:
         params = list (); concept = list (); featureInfo = basicInfo.copy ()
         minLevel = minLevels.get (feature, -np.inf); maxLevel = maxLevels.get (feature, np.inf)
-        featureInfo["MIN-NOISE"] = minLevel if np.isfinite (minLevel) else "-Infinity"
-        featureInfo["MAX-NOISE"] = maxLevel if np.isfinite (maxLevel) else "+Infinity"
+        featureInfo["MIN-NOISE"] = float (minLevel) if np.isfinite (minLevel) else "-Infinity"
+        featureInfo["MAX-NOISE"] = float (maxLevel) if np.isfinite (maxLevel) else "+Infinity"
         xMin = np.floor (ticks.loc[feature, 0]) - 1; xMax = np.ceil (ticks.loc[feature, 1000]) + 1
         for i in range (num):
             if typeList[i] == "trap":
@@ -279,7 +279,7 @@ def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, minLev
                     break
                 params.append (coords); concept.append ([coords, "trapezoidal", colors[i]])
             else:
-                center = round (ticks.loc[feature, int (pctConcept[i][0])], 3)
+                center = round (ticks.loc[feature, pctConcept[i][0]], 3)
                 if not np.isfinite (center):
                     featureInfo["number_fuzzy_sets"] = 0
                     break
@@ -295,14 +295,14 @@ def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, minLev
 
 
 
-def generateOutputFromDefault (featureList, zConcept, fit, allRanges, minLevels, maxLevels, basicInfo, typeList, names, colors):
+def generateOutputFromFitting (featureList, zConcept, fit, allRanges, minLevels, maxLevels, basicInfo, typeList, names, colors, widthFct):
     num = len (typeList); output = dict ()
     for feature in featureList:
         mu, sigma = fit.loc[feature]
         params = list (); concept = list (); featureInfo = basicInfo.copy ()
         minLevel = minLevels.get (feature, -np.inf); maxLevel = maxLevels.get (feature, np.inf)
-        featureInfo["MIN-NOISE"] = minLevel if np.isfinite (minLevel) else "-Infinity"
-        featureInfo["MAX-NOISE"] = maxLevel if np.isfinite (maxLevel) else "+Infinity"
+        featureInfo["MIN-NOISE"] = float (minLevel) if np.isfinite (minLevel) else "-Infinity"
+        featureInfo["MAX-NOISE"] = float (maxLevel) if np.isfinite (maxLevel) else "+Infinity"
         for i in range (num):
             if typeList[i] == "trap":
                 coords = [round (mu + sigma * zConcept[i][0], 3), round (mu + sigma * zConcept[i][1], 3),
@@ -325,7 +325,7 @@ def generateOutputFromDefault (featureList, zConcept, fit, allRanges, minLevels,
                 params.append ([center, round (zConcept[i][1] * sigma, 3)])
                 concept.append ([params[-1], "Gaussian", colors[i]])
         featureInfo.update (dict (zip (names, concept)))
-        percent = dict (zip (names, getSubarea (mu, sigma, params, minLevel = minLevel, maxLevel = maxLevel)))
+        percent = dict (zip (names, getSubarea (mu, sigma * widthFct, params, minLevel = minLevel, maxLevel = maxLevel)))
         for name in names:
             featureInfo[name].append (round (percent[name], 5))
         output[feature] = featureInfo.copy ()

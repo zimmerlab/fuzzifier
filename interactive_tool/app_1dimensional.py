@@ -7,7 +7,7 @@ from matplotlib.lines import Line2D
 from shiny import App, reactive, render, ui
 from helperFunction_1dim import getMtxSummary, estimateStep, estimateCutoff, getFinalConcept, \
     fitMode, getDefaultConcept, getLines, getPercentage, getSubarea, \
-        generateOutputFromConstraint, generateOutputFromDefault
+        generateOutputFromConstraint, generateOutputFromFitting
 
 sns.set_theme (style = "white", rc = {"axes.facecolor": (0, 0, 0, 0)})
 
@@ -125,9 +125,9 @@ app_ui = ui.page_fluid (
                                 ui.card (
                                     ui.layout_columns (
                                         "Number of fuzzy sets on left/right side:",
-                                        ui.input_numeric ("numFS_default", "", value = 2, min = 1, max = 3, step = 1)
+                                        ui.input_numeric ("numFS_fit", "", value = 2, min = 1, max = 3, step = 1)
                                     ),
-                                    id = "FS0_default"
+                                    id = "FS0_fit"
                                 ),
                                 width = "400px", position = "left", open = "open"
                             ),
@@ -135,9 +135,9 @@ app_ui = ui.page_fluid (
                                 ui.layout_column_wrap (
                                     "Band width factor:",
                                     ui.input_numeric ("bwFactor", "", value = 1, min = 0, max = 2, step = 0.05),
-                                    ui.input_action_button ("start_default", "Estimate", width = "200px"),
+                                    ui.input_action_button ("start_fit", "Estimate", width = "200px"),
                                     "Direction:",
-                                    ui.input_select ("fuzzyBy_default", "", selected = "feature", multiple = False,
+                                    ui.input_select ("fuzzyBy_fit", "", selected = "feature", multiple = False,
                                                      choices = {"feature": "per feature", "dataset": "per matrix"}),
                                     ui.div (),
                                     width = 1 / 3
@@ -146,16 +146,16 @@ app_ui = ui.page_fluid (
                             ),
                             ui.layout_columns (
                                 "Select feature for visualization:",
-                                ui.input_selectize ("viewFeature_default", "", choices = {"ALL": "ALL"}, multiple = False, remove_button = True),
+                                ui.input_selectize ("viewFeature_fit", "", choices = {"ALL": "ALL"}, multiple = False, remove_button = True),
                                 ui.div ()
                             ),
                             ui.layout_columns (
                                 "Number of bins:",
-                                ui.input_slider ("numBins_default", "", min = 0, max = 100, step = 5, value = 50, width = "300px", ticks = True),
+                                ui.input_slider ("numBins_fit", "", min = 0, max = 100, step = 5, value = 50, width = "300px", ticks = True),
                                 ui.div ()
                             ),
                             ui.div (
-                                ui.output_plot ("globalDist_default", width = "700px", height = "400px"),
+                                ui.output_plot ("globalDist_fit", width = "700px", height = "400px"),
                                 style = "display: flex; justify-content: center;"
                             ),
                             height = "800px"
@@ -170,7 +170,7 @@ app_ui = ui.page_fluid (
                 ),
                 ui.layout_column_wrap (
                     "Download fuzzy concepts defined by:",
-                    ui.input_radio_buttons ("downloadOption", "", choices = {"cons": "constraints", "default": "default fuzzification"},
+                    ui.input_radio_buttons ("downloadOption", "", choices = {"cons": "constraints", "fit": "fitting"},
                                             selected = "cons", inline = True),
                     ui.div (),
                     "Default name for matrix-wise fuzzy concept:",
@@ -219,7 +219,7 @@ app_ui = ui.page_fluid (
                                                     selected = "upload", inline = True),
                             ui.panel_conditional (
                                 "input.useConcept === 'original'",
-                                ui.input_radio_buttons ("definedBy", "Use fuzzy concepts defined by:", choices = {"cons": "constraints", "default": "default fuzzification"},
+                                ui.input_radio_buttons ("definedBy", "Use fuzzy concepts defined by:", choices = {"cons": "constraints", "fit": "fitting"},
                                                         selected = "cons", inline = True)
                             ),
                             ui.panel_conditional (
@@ -285,7 +285,7 @@ def server (input, output, session):
     allStd = reactive.value (pd.Series (dtype = float))
     curveFit = reactive.value (pd.DataFrame (dtype = float))
     numCards_cons = reactive.value (0)
-    numCards_default = reactive.value (0)
+    numCards_fit = reactive.value (0)
     defaultColors = reactive.value (["blue", "orange", "green", "red", "purple",
                                      "brown", "pink", "gray", "olive", "cyan",
                                      "light blue", "light orange", "light green", "light red", "light purple",
@@ -330,8 +330,7 @@ def server (input, output, session):
             minLevel = input.minNoiseLevel (); minLevel = noiseRepLeft if minLevel is None else minLevel
             maxLevel = input.maxNoiseLevel (); maxLevel = noiseRepRight if maxLevel is None else maxLevel
             minLevelPct = input.minNoiseLevelPct (); maxLevelPct = input.maxNoiseLevelPct ()
-            percentiles = pd.DataFrame ({"minimum": noiseRepLeft, "maximum": noiseRepRight},
-                                        index = list (mtx.index) + ["ALL"])
+            percentiles = pd.DataFrame ({"minimum": noiseRepLeft, "maximum": noiseRepRight}, index = list (mtx.index) + ["ALL"])
             if minLevelPct > 0:
                 percentiles.loc[mtx.index, "minimum"] = mtx.quantile (minLevelPct, axis = 1)
                 percentiles.loc["ALL", "minimum"] = mtx.melt ()["value"].dropna ().quantile (minLevelPct) 
@@ -438,7 +437,7 @@ def server (input, output, session):
             pctProp.set (propTicks); allStd.set (widths.round (3))
             featureList = list (mtx.index); itemList.set ({"feature": featureList, "sample": list (mtx.columns)})
             ui.update_selectize ("viewFeature_cons", choices = ["ALL"] + featureList)
-            ui.update_selectize ("viewFeature_default", choices = ["ALL"] + featureList)
+            ui.update_selectize ("viewFeature_fit", choices = ["ALL"] + featureList)
             ui.notification_show ("Crisp Value Matrix Done", type = "message", duration = 1.5)
 
 
@@ -641,10 +640,10 @@ def server (input, output, session):
             for idx in range (1, num + 1):
                 names.append (input[f"name{idx}_cons"] ()); colors.append (input[f"color{idx}_cons"] ())
                 handles.append (Line2D ([0], [0], color = colors[-1], linewidth = 2))
-                if input[f"typeFS{idx}_cons"] () == "trap":
-                    a = input[f"coord{idx}_a_cons"] (); b = input[f"coord{idx}_b_cons"] ()
-                    c = input[f"coord{idx}_c_cons"] (); d = input[f"coord{idx}_d_cons"] ()
-                    try:
+                try:
+                    if input[f"typeFS{idx}_cons"] () == "trap":
+                        a = input[f"coord{idx}_a_cons"] (); b = input[f"coord{idx}_b_cons"] ()
+                        c = input[f"coord{idx}_c_cons"] (); d = input[f"coord{idx}_d_cons"] ()
                         if idx == 1:
                             params = [valueRange[0], valueRange[0], ticks[int (10 * c)], ticks[int (10 * d)]]
                         elif idx == num:
@@ -652,15 +651,12 @@ def server (input, output, session):
                         else:
                             params = [ticks[int (10 * a)], ticks[int (10 * b)], ticks[int (10 * c)], ticks[int (10 * d)]]
                         concept.append (params)
-                    except (KeyError, TypeError):
-                        pass
-                else:
-                    try:
+                    else:
                         mu = ticks[int (10 * input[f"center{idx}_cons"] ())]
                         sigma = input[f"width{idx}_cons"] () * widths[feature]
                         concept.append ([mu, sigma])
-                    except (KeyError, TypeError):
-                        pass
+                except (KeyError, TypeError):
+                    pass
                 lines, curves = getLines (concept, [max (minLevel, xRange[0]), min (maxLevel, xRange[1])], colors)
                 ax2.plot (*lines, linewidth = 2)
                 for curve in curves:
@@ -671,15 +667,15 @@ def server (input, output, session):
 
 
     @reactive.effect
-    @reactive.event (input.start_default)
+    @reactive.event (input.start_fit)
     def _ ():
         mtx = matrix.get ().replace (labelValues.get (), np.nan); bwFct = input.bwFactor ()
         if mtx.empty:
             return
-        if addNoiseLeft:
-           minLevel = noiseCutoffLeft.get ()
-           mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] <= minLevel.get (idx, -np.inf) for idx in mtx.index}).T)
-        if addNoiseRight:
+        if addNoiseLeft.get ():
+            minLevel = noiseCutoffLeft.get ()
+            mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] <= minLevel.get (idx, -np.inf) for idx in mtx.index}).T)
+        if addNoiseRight.get ():
             maxLevel = noiseCutoffRight.get ()
             mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] >= maxLevel.get (idx, np.inf) for idx in mtx.index}).T)
         with ui.Progress () as p:
@@ -699,90 +695,87 @@ def server (input, output, session):
         if matrix.get ().empty:
             return
         colorCode = defaultColorCodes.get (); colorDict = dict (zip (colorCode, defaultColors.get ()))
-        num = numCards_default.get (); numSide = input.numFS_default (); currNum = 2 * numSide + 1
+        num = numCards_fit.get (); numSide = input.numFS_fit (); currNum = 2 * numSide + 1
         trap, gauss = getDefaultConcept (numSide)
         for i in range (currNum, num):
             idx = i + 1
-            ui.remove_ui (selector = f"#FS{idx}_default", multiple = False, immediate = False)
+            ui.remove_ui (selector = f"#FS{idx}_fit", multiple = False, immediate = False)
         for i in range (min (currNum, num)):
             idx = i + 1
-            ui.update_text (f"name{idx}_default", value = f"FS{idx}")
-            ui.update_select (f"typeFS{idx}_default", choices = {"trap": "trapezoidal", "gauss": "Gaussian"}, selected = "trap")
-            ui.update_numeric (f"coord{idx}_a_default", value = trap[i, 0]); ui.update_numeric (f"coord{idx}_b_default", value = trap[i, 1])
-            ui.update_numeric (f"coord{idx}_c_default", value = trap[i, 2]); ui.update_numeric (f"coord{idx}_d_default", value = trap[i, 3])
-            ui.update_numeric (f"center{idx}_default", step = 0.1, min = -10, max = 10, value = gauss[i])
-            ui.update_numeric (f"width{idx}_default", value = 1)
-            ui.update_select (f"color{idx}_default", selected = colorCode[i])
+            ui.update_text (f"name{idx}_fit", value = f"FS{idx}")
+            ui.update_select (f"typeFS{idx}_fit", choices = {"trap": "trapezoidal", "gauss": "Gaussian"}, selected = "trap")
+            ui.update_numeric (f"coord{idx}_a_fit", value = trap[i, 0]); ui.update_numeric (f"coord{idx}_b_fit", value = trap[i, 1])
+            ui.update_numeric (f"coord{idx}_c_fit", value = trap[i, 2]); ui.update_numeric (f"coord{idx}_d_fit", value = trap[i, 3])
+            ui.update_numeric (f"center{idx}_fit", step = 0.1, min = -10, max = 10, value = gauss[i])
+            ui.update_numeric (f"width{idx}_fit", value = 1)
+            ui.update_select (f"color{idx}_fit", selected = colorCode[i])
         for i in range (num, currNum):
             idx = i + 1
-            if i == numSide:
-                ui.insert_ui (
-                    ui.card (
-                        ui.card_header (f"Fuzzy Set {idx}"),
-                        ui.input_text (f"name{idx}_default", "", value = f"FS{idx}"),
-                        ui.layout_columns (
-                            "(center - mu) / sigma:",
-                            ui.input_numeric (f"center{idx}_default", "", step = 0.1, min = -10, max = 10, value = gauss[i])
-                        ),
-                        ui.layout_columns (
-                            "Width scaling factor:",
-                            ui.input_numeric (f"width{idx}_default", "", step = 0.1, min = 0, max = 2, value = 1)
-                        ),
-                        ui.input_select (f"color{idx}_default", "", choices = colorDict, selected = colorCode[i], multiple = False),
-                        id = f"FS{idx}_default"
-                    ),
-                    selector = f"#FS{i}_default", where = "afterEnd", multiple = False, immediate = False
-                )
-            else:
-                ui.insert_ui (
-                    ui.card (
-                        ui.card_header (f"Fuzzy Set {idx}"),
-                        ui.input_text (f"name{idx}_default", "", value = f"FS{idx}"),
+            ui.insert_ui (
+                ui.card (
+                    ui.card_header (f"Fuzzy Set {idx}"),
+                    ui.input_text (f"name{idx}_fit", "", value = f"FS{idx}"),
+                    ui.input_select (f"typeFS{idx}_fit", "", choices = {"trap": "trapezoidal", "gauss": "Gaussian"},
+                                     selected = "trap", multiple = False),
+                    ui.panel_conditional (
+                        f"input.typeFS{idx}_fit === 'trap'",
                         ui.layout_columns (
                             "(a - mu) / sigma:",
-                            ui.input_numeric (f"coord{idx}_a_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 0])
+                            ui.input_numeric (f"coord{idx}_a_fit", "", step = 0.1, min = -10, max = 10, value = trap[i, 0])
                         ),
                         ui.layout_columns (
                             "(b - mu) / sigma:",
-                            ui.input_numeric (f"coord{idx}_b_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 1])
+                            ui.input_numeric (f"coord{idx}_b_fit", "", step = 0.1, min = -10, max = 10, value = trap[i, 1])
                         ),
                         ui.layout_columns (
                             "(c - mu) / sigma:",
-                            ui.input_numeric (f"coord{idx}_c_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 2])
+                            ui.input_numeric (f"coord{idx}_c_fit", "", step = 0.1, min = -10, max = 10, value = trap[i, 2])
                         ),
                         ui.layout_columns (
                             "(d - mu) / sigma:",
-                            ui.input_numeric (f"coord{idx}_d_default", "", step = 0.1, min = -10, max = 10, value = trap[i, 3])
-                        ),
-                        ui.input_select (f"color{idx}_default", "", choices = colorDict, selected = colorCode[i], multiple = False),
-                        id = f"FS{idx}_default"
+                            ui.input_numeric (f"coord{idx}_d_fit", "", step = 0.1, min = -10, max = 10, value = trap[i, 3])
+                        )
                     ),
-                    selector = f"#FS{i}_default", where = "afterEnd", multiple = False, immediate = False
-                )
-        numCards_default.set (currNum)
+                    ui.panel_conditional (
+                        f"input.typeFS{idx}_fit === 'gauss'",
+                        ui.layout_columns (
+                            "(center - mu) / sigma:",
+                            ui.input_numeric (f"center{idx}_fit", "", step = 0.1, min = -10, max = 10, value = gauss[i])
+                        ),
+                        ui.layout_columns (
+                            "Width scaling factor:",
+                            ui.input_numeric (f"width{idx}_fit", "", step = 0.1, min = 0, max = 2, value = 1)
+                        )
+                    ),
+                    ui.input_select (f"color{idx}_fit", "", choices = colorDict, selected = colorCode[i], multiple = False),
+                    id = f"FS{idx}_fit"
+                ),
+                selector = f"#FS{i}_fit", where = "afterEnd", multiple = False, immediate = False
+            )
+        numCards_fit.set (currNum)
 
 
     @render.plot
-    def globalDist_default ():
-        mtx = matrix.get (); xRange = plotRangeGlobal.get (); num = numCards_default.get (); numSide = input.numFS_default ()
+    def globalDist_fit ():
+        mtx = matrix.get (); xRange = plotRangeGlobal.get (); num = numCards_fit.get ()
         if mtx.empty or len (xRange) != 2:
             return
         mtx = mtx.replace (labelValues.get () + [-np.inf, np.inf], np.nan)
-        fit = curveFit.get (); feature = input.viewFeature_default ()
+        fit = curveFit.get (); feature = input.viewFeature_fit ()
         minLevel = noiseCutoffLeft.get ().get (feature, -np.inf)
         maxLevel = noiseCutoffRight.get ().get (feature, np.inf)
         fig, ax = plt.subplots (figsize = (8, 5))
         if feature == "ALL":
             pltData = mtx.melt ()["value"]
-            if input.numBins_default () != 0:
-                ax.hist (pltData.dropna (), bins = input.numBins_default (), color = "lightgray")
+            if input.numBins_fit () != 0:
+                ax.hist (pltData.dropna (), bins = input.numBins_fit (), color = "lightgray")
             pctUnlabelled = len (pltData.mask ((pltData <= minLevel) | (pltData >= maxLevel)).dropna ()) / len (pltData)
             del pltData
         else:
             try:
                 pltData = mtx.loc[feature]
-                if input.numBins_default () != 0:
-                    ax.hist (pltData.dropna (), bins = input.numBins_default (), color = "lightgray")
+                if input.numBins_fit () != 0:
+                    ax.hist (pltData.dropna (), bins = input.numBins_fit (), color = "lightgray")
                 pctUnlabelled = len (pltData.mask ((pltData <= minLevel) | (pltData >= maxLevel)).dropna ()) / len (pltData)
                 del pltData
             except KeyError:
@@ -795,24 +788,18 @@ def server (input, output, session):
         ax.tick_params (axis = "both", which = "major", labelsize = 8)
         ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of unlabelled values", size = 10)
         if (not fit.empty) and num > 0:
-            feature = "ALL" if input.fuzzyBy_default () == "dataset" else feature
+            feature = "ALL" if input.fuzzyBy_fit () == "dataset" else feature
             mu, sigma = fit.loc[feature]; names = list (); colors = list (); concept = list (); handles = list ()
             ax2 = ax.twinx (); ax2.set_xlim (xRange); ax2.set_ylim ((0, 1.05))
             ax2.tick_params (axis = "y", which = "major", labelsize = 8)
             ax2.set_xlabel ("raw value", size = 10); ax2.set_ylabel ("fuzzy value", size = 10)
             for idx in range (1, num + 1):
-                names.append (input[f"name{idx}_default"] ()); colors.append (input[f"color{idx}_default"] ())
+                names.append (input[f"name{idx}_fit"] ()); colors.append (input[f"color{idx}_fit"] ())
                 handles.append (Line2D ([0], [0], color = colors[-1], linewidth = 2))
-                if idx == numSide + 1:
-                    try:
-                        center = mu + sigma * input[f"center{idx}_default"] (); width = input[f"width{idx}_default"] () * sigma
-                        concept.append ([center, width])
-                    except (TypeError, KeyError):
-                        pass
-                else:
-                    try:
-                        a = mu + sigma * input[f"coord{idx}_a_default"] (); b = mu + sigma * input[f"coord{idx}_b_default"] ()
-                        c = mu + sigma * input[f"coord{idx}_c_default"] (); d = mu + sigma * input[f"coord{idx}_d_default"] ()
+                try:
+                    if input[f"typeFS{idx}_fit"] () == "trap":
+                        a = mu + sigma * input[f"coord{idx}_a_fit"] (); b = mu + sigma * input[f"coord{idx}_b_fit"] ()
+                        c = mu + sigma * input[f"coord{idx}_c_fit"] (); d = mu + sigma * input[f"coord{idx}_d_fit"] ()
                         if idx == 1:
                             xMin = min (xRange[0], np.floor (c) - 1)
                             concept.append ([xMin, xMin, c, d])
@@ -821,8 +808,11 @@ def server (input, output, session):
                             concept.append ([a, b, xMax, xMax])
                         else:
                             concept.append ([a, b, c, d])
-                    except (TypeError, KeyError):
-                        pass
+                    else:
+                        center = mu + sigma * input[f"center{idx}_fit"] (); width = input[f"width{idx}_fit"] () * sigma
+                        concept.append ([center, width])
+                except (TypeError, KeyError):
+                    pass
             lines, curves = getLines (concept, [max (minLevel, xRange[0]), min (maxLevel, xRange[1])], colors)
             ax2.plot (*lines, linewidth = 2)
             for curve in curves:
@@ -847,39 +837,42 @@ def server (input, output, session):
 
     @render.download (filename = "concept_constraint.json")
     def downloadConstraints ():
-        if numCards_cons.get () == 0 and numCards_default.get () == 0:
+        if numCards_cons.get () == 0 and numCards_fit.get () == 0:
             return
+        typeName = {"trap": "trapezoidal", "gauss": "Gaussian"}
         option = input.downloadOption (); constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
         outputLabels = [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labelValues.get ()]
         if option == "cons":
-            num = numCards_cons.get (); typeFS = [input[f"typeFS{idx}_cons"] () for idx in range (1, num + 1)]
+            num = numCards_cons.get ()
             if input.fuzzyBy_cons () == "feature":
                 content = {"value_type": "proportion", "number_fuzzy_sets": num, "label_values": outputLabels,
                            "fit_Gaussian_curve": False, "use_scipy_optimization": False, "band_width_factor": 1}
             else:
                 content = {"value_type": "fixed", "number_fuzzy_sets": num, "label_values": outputLabels,
                            "fit_Gaussian_curve": False, "use_scipy_optimization": False, "band_width_factor": 1}
-        elif option == "default":
-            num = numCards_default.get (); numSide = input.numFS_default ()
-            typeFS = ["trap"] * numSide + ["gauss"] + ["trap"] * numSide
+        elif option == "fit":
+            num = numCards_fit.get ()
             content = {"value_type": "z-score", "number_fuzzy_sets": num, "label_values": outputLabels,
                        "fit_Gaussian_curve": True, "use_scipy_optimization": False, "band_width_factor": input.bwFactor ()}
         else:
             raise ValueError
-        names = list (); colors = list (); params = list ()
+        names = list (); colors = list (); params = list (); widthFct = list ()
+        typeFS = [input[f"typeFS{idx}_{option}"] () for idx in range (1, num + 1)]
         for idx in range (1, num + 1):
             names.append (input[f"name{idx}_{option}"] ()); colors.append (input[f"color{idx}_{option}"] ())
             if typeFS[idx - 1] == "trap":
-                params.append ([input[f"coord{idx}_a_{option}"] (), input[f"coord{idx}_b_{option}"] (),
-                                input[f"coord{idx}_c_{option}"] (), input[f"coord{idx}_d_{option}"] ()])
+                params.append ([input[f"coord{idx}_a_{option}"] () / 100, input[f"coord{idx}_b_{option}"] () / 100,
+                                input[f"coord{idx}_c_{option}"] () / 100, input[f"coord{idx}_d_{option}"] () / 100])
             else:
-                params.append ([input[f"center{idx}_{option}"] (), input[f"width{idx}_{option}"] ()])
+                params.append ([input[f"center{idx}_{option}"] () / 100, input[f"width{idx}_{option}"] ()])
+                widthFct.append (input[f"width{idx}_{option}"] ())
         if option == "cons":
-            percentage = getPercentage (np.linspace (0, 1, 1001), params, minLevel = -np.inf, maxLevel = np.inf)
+            percentage = getPercentage (pd.Series (np.linspace (0, 1, 1001)), params, minLevel = -np.inf, maxLevel = np.inf)
         else:
-            percentage = getSubarea (0, params[numSide][1], params, minLevel = -np.inf, maxLevel = np.inf)
+            widthFct = 1 if len (widthFct) == 0 else round (sum (widthFct) / len (widthFct), 3)
+            percentage = getSubarea (0, widthFct, params, minLevel = -np.inf, maxLevel = np.inf)
         for i in range (num):
-            content[names[i]] = [params[i], typeFS[i], colors[i], round (percentage[i], 5)]
+            content[names[i]] = [params[i], typeName[typeFS[i]], colors[i], round (percentage[i], 5)]
         outputStr = json.dumps (content, indent = 4)
         yield outputStr
         ui.notification_show ("Download Completed", type = "message", duration = 2)
@@ -887,52 +880,61 @@ def server (input, output, session):
 
     @render.download (filename = "concept_detailed.json")
     def downloadConcepts ():
-        if numCards_cons.get () == 0 and numCards_default.get () == 0:
+        if numCards_cons.get () == 0 and numCards_fit.get () == 0:
             return
         option = input.downloadOption (); defaultName = input.defaultName () if input.defaultName () != "" else "ALL"
         featureList = [defaultName] + itemList.get ()["feature"]; constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
+        minLevels = noiseCutoffLeft.get (); minLevels = minLevels.rename (index = {"ALL": defaultName})
+        maxLevels = noiseCutoffRight.get (); maxLevels = maxLevels.rename (index = {"ALL": defaultName})
         if option == "cons":
             num = numCards_cons.get (); ticks = pctProp.get ().rename (index = {"ALL": defaultName})
+            widths = allStd.get (); widths = widths.rename (index = {"ALL": defaultName})
             typeList = list (); names = list (); colors = list (); pctConcept = list ()
             for idx in range (1, num + 1):
-                typeList.append (input[f"typeFS{idx}_cons"] ()); names.append (input[f"name{idx}_cons"] ()); colors.append (input[f"color{idx}_cons"] ())
-                if input[f"typeFS{idx}_cons"] () == "trap":
+                typeList.append (input[f"typeFS{idx}_cons"] ()); names.append (input[f"name{idx}_cons"] ())
+                colors.append (input[f"color{idx}_cons"] ())
+                if typeList[-1] == "trap":
                     pctConcept.append ([int (10 * input[f"coord{idx}_a_cons"] ()), int (10 * input[f"coord{idx}_b_cons"] ()),
                                         int (10 * input[f"coord{idx}_c_cons"] ()), int (10 * input[f"coord{idx}_d_cons"] ())])
                 else:
                     pctConcept.append ([10 * input[f"center{idx}_cons"] (), input[f"width{idx}_cons"] ()])
-            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labelValues.get ()]}
+            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA"
+                                                                    for x in labelValues.get ()]}
             with ui.Progress () as p:
                 p.set (message = "Download Running", detail = "This will take a while...")
-                output = generateOutputFromConstraint (featureList, pctConcept, ticks, allStd.get (), noiseCutoffLeft.get (), noiseCutoffRight.get (),
+                output = generateOutputFromConstraint (featureList, pctConcept, ticks, widths, minLevels, maxLevels,
                                                        basicInfo, typeList, names, colors)
                 outputStr = json.dumps (output, indent = 4)
                 yield outputStr
             ui.notification_show ("Download Completed", type = "message", duration = 2)
-        elif option == "default":
-            num = numCards_default.get (); numSide = input.numFS_default (); fit = curveFit.get ().rename (index = {"ALL": defaultName})
-            typeList = list (); names = list (); colors = list (); zConcept = list ()
+        elif option == "fit":
+            num = numCards_fit.get (); fit = curveFit.get ().rename (index = {"ALL": defaultName})
+            typeList = list (); names = list (); colors = list (); zConcept = list (); widthFct = list ()
             for idx in range (1, num + 1):
-                names.append (input[f"name{idx}_default"] ()); colors.append (input[f"color{idx}_default"] ())
-                if idx == numSide + 1:
-                    typeList.append ("gauss")
-                    zConcept.append ([input[f"center{idx}_default"] (), input[f"width{idx}_default"] ()])
+                typeList.append (input[f"typeFS{idx}_fit"] ()); names.append (input[f"name{idx}_fit"] ())
+                colors.append (input[f"color{idx}_fit"] ())
+                if typeList[-1] == "trap":
+                    zConcept.append ([input[f"coord{idx}_a_fit"] (), input[f"coord{idx}_b_fit"] (),
+                                      input[f"coord{idx}_c_fit"] (), input[f"coord{idx}_d_fit"] ()])
                 else:
-                    typeList.append ("trap")
-                    zConcept.append ([input[f"coord{idx}_a_default"] (), input[f"coord{idx}_b_default"] (),
-                                      input[f"coord{idx}_c_default"] (), input[f"coord{idx}_d_default"] ()])
-            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labelValues.get ()]}
+                    zConcept.append ([input[f"center{idx}_fit"] (), input[f"width{idx}_fit"] ()])
+                    widthFct.append (input[f"width{idx}_fit"] ())
+            widthFct = 1 if len (widthFct) == 0 else round (sum (widthFct) / len (widthFct), 3)
+            basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA"
+                                                                    for x in labelValues.get ()]}
             allRanges = matrix.get ().replace (labelValues.get (), np.nan)
             if addNoiseLeft.get ():
-                allRanges = allRanges.mask (allRanges <= noiseCutoffLeft.get ())
+                minLevel = noiseCutoffLeft.get ()
+                allRanges = allRanges.mask (pd.DataFrame ({idx: allRanges.loc[idx] <= minLevel.get (idx, -np.inf) for idx in allRanges.index}).T)
             if addNoiseRight.get ():
-                allRanges = allRanges.mask (allRanges >= noiseCutoffRight.get ())
+                maxLevel = noiseCutoffRight.get ()
+                allRanges = allRanges.mask (pd.DataFrame ({idx: allRanges.loc[idx] >= maxLevel.get (idx, np.inf) for idx in allRanges.index}).T)
             allRanges = pd.DataFrame ({"min": allRanges.min (axis = 1, skipna = True), "max": allRanges.max (axis = 1, skipna = True)})
             allRanges = allRanges.replace (np.nan, 0); allRanges.loc[defaultName] = dict (zip (["min", "max"], rangeGlobal.get ()))
             with ui.Progress () as p:
                 p.set (message = "Download Running", detail = "This will take a while...")
-                output = generateOutputFromDefault (featureList, zConcept, fit, allRanges, noiseCutoffLeft.get (), noiseCutoffRight.get (),
-                                                    basicInfo, typeList, names, colors)
+                output = generateOutputFromFitting (featureList, zConcept, fit, allRanges, minLevels, maxLevels, basicInfo,
+                                                    typeList, names, colors, widthFct)
                 outputStr = json.dumps (output, indent = 4)
                 yield outputStr
             ui.notification_show ("Download Completed", type = "message", duration = 2)
@@ -990,7 +992,7 @@ def server (input, output, session):
         xMax = np.ceil (mtx.replace (np.inf, np.nan).max (axis = None, skipna = True)) + 1
         step = estimateStep (xMin, xMax); plotRangeGlobal_visual.set ([xMin, xMax])
         ui.update_slider ("zoom_visual", min = xMin + 1, max = xMax - 1, value = (xMin + 1, xMax - 1), step = step)
-        basicInfo = {"number_fuzzy_sets": 0, "label_values": list (set (labelValues.get ()) - set (plotRangeGlobal.get ()))}
+        basicInfo = {"number_fuzzy_sets": 0, "label_values": labelValues.get ()}
         if input.useConcept () == "original":
             defined = input.definedBy ()
             if defined == "cons":
@@ -1006,25 +1008,26 @@ def server (input, output, session):
                         gaussIdx.append (idx)
                         tempConcept.append ([int (10 * input[f"center{idx}_cons"] ()), input[f"width{idx}_cons"] ()])
                 concepts = generateOutputFromConstraint (["ALL"] + itemList.get ()["feature"], tempConcept, pctProp.get (), allStd.get (),
-                                                         input.fuzzyBy_cons (), noiseCutoffLeft.get (), noiseCutoffRight.get (),
-                                                         basicInfo, typeList, names, colors)
+                                                         noiseCutoffLeft.get (), noiseCutoffRight.get (), basicInfo, typeList, names, colors)
             else:
-                num = numCards_default.get (); numSide = input.numFS_default (); basicInfo["number_fuzzy_sets"] = num
-                names = list (); typeList = list (); colors = list (); tempConcept = list ()
+                num = numCards_fit.get (); basicInfo["number_fuzzy_sets"] = num
+                names = list (); typeList = list (); colors = list (); tempConcept = list (); widthFct = list ()
                 for idx in range (1, num + 1):
-                    names.append (input[f"name{idx}_default"] ()); colors.append (input[f"color{idx}_default"] ())
-                    if idx == numSide + 1:
-                        typeList.append ("gauss")
-                        tempConcept.append ([input[f"center{idx}_default"] (), input[f"width{idx}_default"] ()])
+                    typeList.append (input[f"typeFS{idx}_fit"] ()); names.append (input[f"name{idx}_fit"] ())
+                    colors.append (input[f"color{idx}_fit"] ())
+                    if typeList[-1] == "trap":
+                        tempConcept.append ([input[f"coord{idx}_a_fit"] (), input[f"coord{idx}_b_fit"] (),
+                                             input[f"coord{idx}_c_fit"] (), input[f"coord{idx}_d_fit"] ()])
                     else:
-                        typeList.append ("trap")
-                        tempConcept.append ([input[f"coord{idx}_a_default"] (), input[f"coord{idx}_b_default"] (),
-                                             input[f"coord{idx}_c_default"] (), input[f"coord{idx}_d_default"] ()])
+                        tempConcept.append ([input[f"center{idx}_fit"] (), input[f"width{idx}_fit"] ()])
+                        widthFct.append (input[f"width{idx}_fit"] ())
+                widthFct = 1 if len (widthFct) == 0 else round (sum (widthFct) / len (widthFct), 3)
                 allRanges = matrix.get ().replace (labelValues.get (), np.nan)
                 allRanges = pd.DataFrame ({"min": allRanges.min (axis = 1, skipna = True), "max": allRanges.max (axis = 1, skipna = True)})
                 allRanges = allRanges.replace (np.nan, 0); allRanges.loc["ALL"] = dict (zip (["min", "max"], rangeGlobal.get ()))
-                concepts = generateOutputFromDefault (["ALL"] + itemList.get ()["feature"], tempConcept, curveFit.get (), allRanges,
-                                                      noiseCutoffLeft.get (), noiseCutoffRight.get (), basicInfo, typeList, names, colors)
+                concepts = generateOutputFromFitting (["ALL"] + itemList.get ()["feature"], tempConcept, curveFit.get (), allRanges,
+                                                      noiseCutoffLeft.get (), noiseCutoffRight.get (), basicInfo,
+                                                      typeList, names, colors, widthFct)
             concepts_visual.set (concepts)
         else:
             concepts = concepts_visual.get ()
