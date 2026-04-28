@@ -115,7 +115,7 @@ app_ui = ui.page_fluid (
                                 ui.output_plot ("globalDist_cons", width = "700px", height = "400px"),
                                 style = "display: flex; justify-content: center;"
                             ),
-                            height = "900px"
+                            height = "800px"
                         )
                     ),
                     ui.nav_panel (
@@ -139,7 +139,7 @@ app_ui = ui.page_fluid (
                                     "Direction:",
                                     ui.input_select ("fuzzyBy_fit", "", selected = "feature", multiple = False,
                                                      choices = {"feature": "per feature", "dataset": "per matrix"}),
-                                    ui.div (),
+                                    ui.input_switch ("ifOptimize", "Use SciPy optimization?", value = False),
                                     width = 1 / 3
                                 ),
                                 height = "150px"
@@ -281,6 +281,8 @@ def server (input, output, session):
     addNoiseRight = reactive.value (False)
     noiseCutoffRight = reactive.value (pd.Series (dtype = float))
     labelValues = reactive.value (list ())
+    labelMask = reactive.value (pd.DataFrame (dtype = bool))
+    noiseMask = reactive.value (pd.DataFrame (dtype = bool))
     pctProp = reactive.value (pd.DataFrame (dtype = float))
     allStd = reactive.value (pd.Series (dtype = float))
     curveFit = reactive.value (pd.DataFrame (dtype = float))
@@ -307,7 +309,7 @@ def server (input, output, session):
         else:
             with ui.Progress () as p:
                 p.set (message = "Importing Matrix")
-                mtx = pd.read_csv (file[0]["datapath"], index_col = 0, sep = "\t").astype (float)
+                mtx = pd.read_csv (file[0]["datapath"], index_col = 0, sep = "\t").astype (float).round (5)
             ui.notification_show ("Import Successful", type = "message", duration = 1.5)
             xMin = np.floor (mtx.replace (-np.inf, np.nan).min (axis = None, skipna = True)) - 1
             xMax = np.ceil (mtx.replace (np.inf, np.nan).max (axis = None, skipna = True)) + 1
@@ -421,13 +423,12 @@ def server (input, output, session):
                                 easy_close = True)
             ui.modal_show (message)
         else:
-            mtx = matrix.get ().replace (labelValues.get () + [-np.inf, np.inf], np.nan)
-            if addNoiseLeft.get ():
-                minLevel = noiseCutoffLeft.get ()
-                mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] <= minLevel.get (idx, -np.inf) for idx in mtx.index}).T)
-            if addNoiseRight.get ():
-                maxLevel = noiseCutoffRight.get ()
-                mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] >= maxLevel.get (idx, np.inf) for idx in mtx.index}).T)
+            mtx = matrix.get (); mask = np.isnan (mtx.replace (labelValues.get (), np.nan))
+            mtx = mtx.mask (labelMask | (~np.isfinite (mtx))); labelMask.set (mask)
+            minLevel = noiseCutoffLeft.get (); maxLevel = noiseCutoffRight.get ()
+            mask = pd.DataFrmae ({idx: (mtx.loc[idx] <= minLevel.get (idx, -np.inf)) | (mtx.loc[idx] >= maxLevel.get (idx, np.inf))
+                                  for idx in mtx.index}).T
+            mtx = mtx.mask (mask); noiseMask.set (mask)
             xMin = np.floor (mtx.min (axis = None, skipna = True)) - 1; xMax = np.ceil (mtx.max (axis = None, skipna = True)) + 1
             rangeGlobal.set ([xMin, xMax])
             propTicks = mtx.quantile (np.linspace (0, 1, 1001), axis = 1, numeric_only = True).T
@@ -478,8 +479,8 @@ def server (input, output, session):
                 ui.card (
                     ui.card_header (f"Fuzzy Set {idx}"),
                     ui.input_text (f"name{idx}_cons", "", value = f"FS{idx}"),
-                    ui.input_select (f"typeFS{idx}_cons", "", choices = {"trap": "trapezoidal", "gauss": "Gaussian"}, selected = "trap",
-                                     multiple = False),
+                    ui.input_select (f"typeFS{idx}_cons", "", choices = {"trap": "trapezoidal", "gauss": "Gaussian"},
+                                     selected = "trap", multiple = False),
                     ui.panel_conditional (
                         f"input.typeFS{idx}_cons === 'trap'",
                         ui.layout_columns (
@@ -669,23 +670,17 @@ def server (input, output, session):
     @reactive.effect
     @reactive.event (input.start_fit)
     def _ ():
-        mtx = matrix.get ().replace (labelValues.get (), np.nan); bwFct = input.bwFactor ()
+        mtx = matrix.get ().mask (labelMask.get () | noiseMask.get ())
         if mtx.empty:
             return
-        if addNoiseLeft.get ():
-            minLevel = noiseCutoffLeft.get ()
-            mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] <= minLevel.get (idx, -np.inf) for idx in mtx.index}).T)
-        if addNoiseRight.get ():
-            maxLevel = noiseCutoffRight.get ()
-            mtx = mtx.mask (pd.DataFrame ({idx: mtx.loc[idx] >= maxLevel.get (idx, np.inf) for idx in mtx.index}).T)
         with ui.Progress () as p:
             p.set (message = "Deriving", detail = "This will take a while...")
-            fit = pd.DataFrame (columns = ["mu", "sigma"], dtype = float)
+            fit = pd.DataFrame (columns = ["mu", "sigma"], dtype = float); bwFct = input.bwFactor (); useFit = (bwFct > 0)
             for feature in mtx.index:
-                fit.loc[feature] = dict (zip (["mu", "sigma"], fitMode (mtx.loc[feature], bwFct = bwFct,
-                                                                        useFit = (bwFct > 0))))
+                params = fitMode (mtx.loc[feature], bwFct = bwFct, useFit = useFit, useOptimize = input.ifOptimize ())
+                fit.loc[feature] = dict (zip (["mu", "sigma"], params))
             mtx = mtx.melt ()["value"].dropna ()
-            fit.loc["ALL"] = dict (zip (["mu", "sigma"], fitMode (mtx, bwFct = bwFct, useFit = False)))
+            fit.loc["ALL"] = dict (zip (["mu", "sigma"], fitMode (mtx, bwFct = bwFct, useFit = False, useOptimize = False)))
             curveFit.set (fit.round (3))
         ui.notification_show ("Derivation Completed", type = "message", duration = 2)
     
@@ -703,9 +698,12 @@ def server (input, output, session):
         for i in range (min (currNum, num)):
             idx = i + 1
             ui.update_text (f"name{idx}_fit", value = f"FS{idx}")
-            ui.update_select (f"typeFS{idx}_fit", choices = {"trap": "trapezoidal", "gauss": "Gaussian"}, selected = "trap")
-            ui.update_numeric (f"coord{idx}_a_fit", value = trap[i, 0]); ui.update_numeric (f"coord{idx}_b_fit", value = trap[i, 1])
-            ui.update_numeric (f"coord{idx}_c_fit", value = trap[i, 2]); ui.update_numeric (f"coord{idx}_d_fit", value = trap[i, 3])
+            ui.update_select (f"typeFS{idx}_fit", choices = {"trap": "trapezoidal", "gauss": "Gaussian"},
+                              selected = "trap")
+            ui.update_numeric (f"coord{idx}_a_fit", value = trap[i, 0])
+            ui.update_numeric (f"coord{idx}_b_fit", value = trap[i, 1])
+            ui.update_numeric (f"coord{idx}_c_fit", value = trap[i, 2])
+            ui.update_numeric (f"coord{idx}_d_fit", value = trap[i, 3])
             ui.update_numeric (f"center{idx}_fit", step = 0.1, min = -10, max = 10, value = gauss[i])
             ui.update_numeric (f"width{idx}_fit", value = 1)
             ui.update_select (f"color{idx}_fit", selected = colorCode[i])
@@ -828,8 +826,8 @@ def server (input, output, session):
         defaultName = input.defaultName () if input.defaultName () != "" else "ALL"
         featureList = set (itemList.get ().get ("feature", list ()))
         if {defaultName}.issubset (featureList):
-            message = ui.modal ("The default name already exists as index in the input matrix.", title = "Check Failed",
-                                easy_close = True)
+            message = ui.modal ("The default name already exists as index in the input matrix.",
+                                title = "Check Failed", easy_close = True)
             ui.modal_show (message)
         elif len (featureList) != 0:
             ui.notification_show ("The default name is unique.", type = "message", duration = 2)
@@ -856,7 +854,7 @@ def server (input, output, session):
                        "fit_Gaussian_curve": True, "use_scipy_optimization": False, "band_width_factor": input.bwFactor ()}
         else:
             raise ValueError
-        names = list (); colors = list (); params = list (); widthFct = list ()
+        names = list (); colors = list (); params = list ()
         typeFS = [input[f"typeFS{idx}_{option}"] () for idx in range (1, num + 1)]
         for idx in range (1, num + 1):
             names.append (input[f"name{idx}_{option}"] ()); colors.append (input[f"color{idx}_{option}"] ())
@@ -865,12 +863,10 @@ def server (input, output, session):
                                 input[f"coord{idx}_c_{option}"] () / 100, input[f"coord{idx}_d_{option}"] () / 100])
             else:
                 params.append ([input[f"center{idx}_{option}"] () / 100, input[f"width{idx}_{option}"] ()])
-                widthFct.append (input[f"width{idx}_{option}"] ())
         if option == "cons":
             percentage = getPercentage (pd.Series (np.linspace (0, 1, 1001)), params, minLevel = -np.inf, maxLevel = np.inf)
         else:
-            widthFct = 1 if len (widthFct) == 0 else round (sum (widthFct) / len (widthFct), 3)
-            percentage = getSubarea (0, widthFct, params, minLevel = -np.inf, maxLevel = np.inf)
+            percentage = getSubarea (0, 1, params, minLevel = -np.inf, maxLevel = np.inf)
         for i in range (num):
             content[names[i]] = [params[i], typeName[typeFS[i]], colors[i], round (percentage[i], 5)]
         outputStr = json.dumps (content, indent = 4)
@@ -909,7 +905,7 @@ def server (input, output, session):
             ui.notification_show ("Download Completed", type = "message", duration = 2)
         elif option == "fit":
             num = numCards_fit.get (); fit = curveFit.get ().rename (index = {"ALL": defaultName})
-            typeList = list (); names = list (); colors = list (); zConcept = list (); widthFct = list ()
+            typeList = list (); names = list (); colors = list (); zConcept = list ()
             for idx in range (1, num + 1):
                 typeList.append (input[f"typeFS{idx}_fit"] ()); names.append (input[f"name{idx}_fit"] ())
                 colors.append (input[f"color{idx}_fit"] ())
@@ -918,8 +914,6 @@ def server (input, output, session):
                                       input[f"coord{idx}_c_fit"] (), input[f"coord{idx}_d_fit"] ()])
                 else:
                     zConcept.append ([input[f"center{idx}_fit"] (), input[f"width{idx}_fit"] ()])
-                    widthFct.append (input[f"width{idx}_fit"] ())
-            widthFct = 1 if len (widthFct) == 0 else round (sum (widthFct) / len (widthFct), 3)
             basicInfo = {"number_fuzzy_sets": num, "label_values": [constRev.get (x, x) if not np.isnan (x) else "NA"
                                                                     for x in labelValues.get ()]}
             allRanges = matrix.get ().replace (labelValues.get (), np.nan)
@@ -934,7 +928,7 @@ def server (input, output, session):
             with ui.Progress () as p:
                 p.set (message = "Download Running", detail = "This will take a while...")
                 output = generateOutputFromFitting (featureList, zConcept, fit, allRanges, minLevels, maxLevels, basicInfo,
-                                                    typeList, names, colors, widthFct)
+                                                    typeList, names, colors)
                 outputStr = json.dumps (output, indent = 4)
                 yield outputStr
             ui.notification_show ("Download Completed", type = "message", duration = 2)
@@ -1011,7 +1005,7 @@ def server (input, output, session):
                                                          noiseCutoffLeft.get (), noiseCutoffRight.get (), basicInfo, typeList, names, colors)
             else:
                 num = numCards_fit.get (); basicInfo["number_fuzzy_sets"] = num
-                names = list (); typeList = list (); colors = list (); tempConcept = list (); widthFct = list ()
+                names = list (); typeList = list (); colors = list (); tempConcept = list ()
                 for idx in range (1, num + 1):
                     typeList.append (input[f"typeFS{idx}_fit"] ()); names.append (input[f"name{idx}_fit"] ())
                     colors.append (input[f"color{idx}_fit"] ())
@@ -1020,14 +1014,12 @@ def server (input, output, session):
                                              input[f"coord{idx}_c_fit"] (), input[f"coord{idx}_d_fit"] ()])
                     else:
                         tempConcept.append ([input[f"center{idx}_fit"] (), input[f"width{idx}_fit"] ()])
-                        widthFct.append (input[f"width{idx}_fit"] ())
-                widthFct = 1 if len (widthFct) == 0 else round (sum (widthFct) / len (widthFct), 3)
                 allRanges = matrix.get ().replace (labelValues.get (), np.nan)
                 allRanges = pd.DataFrame ({"min": allRanges.min (axis = 1, skipna = True), "max": allRanges.max (axis = 1, skipna = True)})
                 allRanges = allRanges.replace (np.nan, 0); allRanges.loc["ALL"] = dict (zip (["min", "max"], rangeGlobal.get ()))
                 concepts = generateOutputFromFitting (["ALL"] + itemList.get ()["feature"], tempConcept, curveFit.get (), allRanges,
                                                       noiseCutoffLeft.get (), noiseCutoffRight.get (), basicInfo,
-                                                      typeList, names, colors, widthFct)
+                                                      typeList, names, colors)
             concepts_visual.set (concepts)
         else:
             concepts = concepts_visual.get ()

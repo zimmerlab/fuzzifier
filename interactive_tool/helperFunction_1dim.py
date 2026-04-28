@@ -167,6 +167,7 @@ def fitMode (values, bwFct = 1, useFit = True, useOptimize = False):
             modes = density.iloc[signal.argrelmax (density["density"].to_numpy ())[0]].drop_duplicates ()
             modes.loc["mean"] = {"value": mu, "density": kernel ([mu])[0]}; modes = modes.sort_values ("value")
         except (ValueError, np.linalg.LinAlgError):
+            density = pd.DataFrame ({"value": finite_values, "density": 0}).sort_values ("value").drop_duplicates ()
             modes = pd.DataFrame ({"value": mu, "density": 0}, index = ["mean"])
         meanIdx = list (modes.index).index ("mean")
         if modes.shape[0] == 1:
@@ -182,9 +183,15 @@ def fitMode (values, bwFct = 1, useFit = True, useOptimize = False):
         if useOptimize:
             lb = np.floor (modes.iloc[modeIdx, 0] * 1e3) / 1e3; ub = np.ceil (modes.iloc[modeIdx, 0] * 1e3) / 1e3
             ub = ub + 1e-3 if lb == ub else ub
-            res, _ = optimize.curve_fit (lambda x, m, s: stats.norm.pdf (x, loc = m, scale = s), density["value"], density["density"],
-                                         bounds = [(lb, -np.inf), (ub, np.inf)])
-            mu = res[0]; sigma = res[1]
+            try:
+                res, _ = optimize.curve_fit (lambda x, m, s: stats.norm.pdf (x, loc = m, scale = s), density["value"], density["density"],
+                                             bounds = [(lb, -np.inf), (ub, np.inf)])
+                mu = res[0]; sigma = res[1]
+            except RuntimeError:
+                mu = modes.iloc[modeIdx, 0]
+                sigma1 = finite_values[finite_values < mu].std (); sigma1 = 0 if np.isnan (sigma1) else sigma1
+                sigma2 = finite_values[finite_values > mu].std (); sigma2 = 0 if np.isnan (sigma2) else sigma2
+                sigma = np.sqrt (sigma1 ** 2 + sigma2 ** 2)
         else:
             mu = modes.iloc[modeIdx, 0]
             sigma1 = finite_values[finite_values < mu].std (); sigma1 = 0 if np.isnan (sigma1) else sigma1
@@ -295,7 +302,7 @@ def generateOutputFromConstraint (featureList, pctConcept, ticks, widths, minLev
 
 
 
-def generateOutputFromFitting (featureList, zConcept, fit, allRanges, minLevels, maxLevels, basicInfo, typeList, names, colors, widthFct):
+def generateOutputFromFitting (featureList, zConcept, fit, allRanges, minLevels, maxLevels, basicInfo, typeList, names, colors):
     num = len (typeList); output = dict ()
     for feature in featureList:
         mu, sigma = fit.loc[feature]
@@ -325,7 +332,7 @@ def generateOutputFromFitting (featureList, zConcept, fit, allRanges, minLevels,
                 params.append ([center, round (zConcept[i][1] * sigma, 3)])
                 concept.append ([params[-1], "Gaussian", colors[i]])
         featureInfo.update (dict (zip (names, concept)))
-        percent = dict (zip (names, getSubarea (mu, sigma * widthFct, params, minLevel = minLevel, maxLevel = maxLevel)))
+        percent = dict (zip (names, getSubarea (mu, sigma, params, minLevel = minLevel, maxLevel = maxLevel)))
         for name in names:
             featureInfo[name].append (round (percent[name], 5))
         output[feature] = featureInfo.copy ()
