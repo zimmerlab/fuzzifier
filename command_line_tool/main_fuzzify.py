@@ -39,9 +39,12 @@ renameLabels = {const.get (val.lower ()): renameLabels[val] for val in renameLab
 
 with open (args.concept) as f:
     tmp = json.load (f)
-concepts = list ()
+concepts = dict ()
 for key in tmp:
     concept = tmp[key].copy ()
+    concept["MIN-NOISE"] = concept.get ("MIN-NOISE", -np.inf); concept["MAX-NOISE"] = concept.get ("MAX-NOISE", np.inf)
+    concept["MIN-NOISE"] = const.get (concept["MIN-NOISE"].lower (), -np.inf) if isinstance (concept["MIN-NOISE"], str) else concept["MIN-NOISE"]
+    concept["MAX-NOISE"] = const.get (concept["MAX-NOISE"].lower (), np.inf) if isinstance (concept["MAX-NOISE"], str) else concept["MAX-NOISE"]
     concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x
                                for x in concept.get ("label_values", list ())]
     concepts[key] = concept
@@ -53,7 +56,7 @@ if not os.path.exists (args.output):
 deriveConcepts = (not isinstance (list (concepts.values ())[0], dict))
 if args.mtx.lower ().endswith ("tsv"):
     with open (args.mtx) as f:
-        samples = f.readline ().strip ("\n").split ("\t")[1:]
+        samples = f.readline ().lstrip ().rstrip ("\n").split ("\t")
         features = [line.split ("\t")[0] for line in f.readlines ()]
 elif args.mtx.lower ().endswith ("h5ad"):
     if direction == "sample":
@@ -121,6 +124,8 @@ if direction == "sample":
                 allConcepts[sample] = outputConcept
         else:
             concept = concepts.get (sample, default).copy ()
+            if concept["number_fuzzy_sets"] == 0:
+                concept = default.copy ()
         memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
         if not memberships.empty:
             memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
@@ -144,6 +149,8 @@ else:
                             allConcepts[feature] = outputConcept
                     else:
                         concept = concepts.get (feature, default).copy ()
+                        if concept["number_fuzzy_sets"] == 0:
+                            concept = default.copy ()
                 else:
                     concept = default.copy ()
                 memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
@@ -165,6 +172,8 @@ else:
                         allConcepts[feature] = outputConcept
                 else:
                     concept = concepts.get (feature, default).copy ()
+                    if concept["number_fuzzy_sets"] == 0:
+                        concept = default.copy ()
             else:
                 concept = default.copy ()
             memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)

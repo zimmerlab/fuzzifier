@@ -46,13 +46,12 @@ if method == "constraint":
     if consType == "fixed":
         consValue = list (); useFit = False; useOptimize = False; percentage = [0] * numFS
     elif consType == "proportion" or consType == "z-score":
-        consValue = set (); widthFct = list ()
+        consValue = set ()
         for idx in range (numFS):
             if len (concept_cons[idx]) == 4:
                 consValue |= concept_cons[idx]
             elif len (concept_cons[idx]) == 2:
                 consValue |= {concept_cons[idx][0]}
-                widthFct.append (concept_cons[idx][1])
             else:
                 raise ValueError
         consValue = sorted (consValue); useFit = (consType == "z-score"); useOptimize = params.get ("use_scipy_optimization", False)
@@ -60,9 +59,8 @@ if method == "constraint":
     else:
         raise ValueError
     bwFct = 1; widthFct = 1; slopeFct = 0.5; centerIdx = 0
-    if consType == "z-score" and len (widthFct) != 0:
-        widthFct = sum (widthFct) / len (widthFct)
-        percentage = getSubarea (0, widthFct, concept_cons, minLevel = -np.inf, maxLevel = np.inf)
+    if consType == "z-score":
+        percentage = getSubarea (0, 1, concept_cons, minLevel = -np.inf, maxLevel = np.inf)
 elif method == "default":
     consType = "z-score"; centerIdx = params["number_fuzzy_sets_per_side"]; numFS = 2 * centerIdx + 1; useFit = True
     bwFct = params.get ("band_width_factor", 1); widthFct = params.get ("width_scale_factor", 1); slopeFct = params.get ("slope_percentage", 0.5)
@@ -70,7 +68,7 @@ elif method == "default":
     coords = [widthFct * (i + overlap) for i in np.linspace (-numFS, numFS, numFS + 1) for overlap in [-slopeFct, slopeFct]]
     concept_cons = np.round ([coords[(2 * k - 2):(2 * k + 2)] for k in range (1, numFS + 1)], 3).tolist ()
     concept_cons[centerIdx] = [0, widthFct]; concept_cons[0][0] = concept_cons[0][1]; concept_cons[-1][3] = concept_cons[-1][2]; consValue = list ()
-    percentage = getSubarea (0, widthFct, concept_cons, minLevel = -np.inf, maxLevel = np.inf)
+    percentage = getSubarea (0, 1, concept_cons, minLevel = -np.inf, maxLevel = np.inf)
 else:
     raise ValueError
 if len (renameFS) == 0:

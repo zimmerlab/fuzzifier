@@ -17,6 +17,7 @@ def _fitMode (values, bwFct = 1, useFit = True, useOptimize = False):
             modes = density.iloc[signal.argrelmax (density["density"].to_numpy ())[0]].drop_duplicates ()
             modes.loc["mean"] = {"value": mu, "density": kernel ([mu])[0]}; modes = modes.sort_values ("value")
         except (ValueError, np.linalg.LinAlgError):
+            density = pd.DataFrame ({"value": finite_values, "density": 0}).sort_values ("value").drop_duplicates ()
             modes = pd.DataFrame ({"value": mu, "density": 0}, index = ["mean"])
         meanIdx = list (modes.index).index ("mean")
         if modes.shape[0] == 1:
@@ -32,9 +33,15 @@ def _fitMode (values, bwFct = 1, useFit = True, useOptimize = False):
         if useOptimize:
             lb = np.floor (modes.iloc[modeIdx, 0] * 1e3) / 1e3; ub = np.ceil (modes.iloc[modeIdx, 0] * 1e3) / 1e3
             ub = ub + 1e-3 if lb == ub else ub
-            res, _ = optimize.curve_fit (lambda x, m, s: stats.norm.pdf (x, loc = m, scale = s), density["value"], density["density"],
-                                         bounds = [(lb, -np.inf), (ub, np.inf)])
-            mu = res[0]; sigma = res[1]
+            try:
+                res, _ = optimize.curve_fit (lambda x, m, s: stats.norm.pdf (x, loc = m, scale = s), density["value"], density["density"],
+                                             bounds = [(lb, -np.inf), (ub, np.inf)])
+                mu = res[0]; sigma = res[1]
+            except RuntimeError:
+                mu = modes.iloc[modeIdx, 0]
+                sigma1 = finite_values[finite_values < mu].std (); sigma1 = 0 if np.isnan (sigma1) else sigma1
+                sigma2 = finite_values[finite_values > mu].std (); sigma2 = 0 if np.isnan (sigma2) else sigma2
+                sigma = np.sqrt (sigma1 ** 2 + sigma2 ** 2)
         else:
             mu = modes.iloc[modeIdx, 0]
             sigma1 = finite_values[finite_values < mu].std (); sigma1 = 0 if np.isnan (sigma1) else sigma1
@@ -163,17 +170,15 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
             elif consType == "z-score" and not masked.empty:
                 mu, sigma = _fitMode (masked, bwFct = bwFct, useFit = useFit, useOptimize = useOptimize)
                 if (not (np.isnan (mu) and np.isnan (sigma))) and sigma > 0:
-                    typeFS = list (); concept = list (); scaleFct = list ()
+                    typeFS = list (); concept = list ()
                     for idx in range (numFS):
                         typeFS.append (typeFS_dict[len (refConcept[idx])])
                         if typeFS[-1] == "trapezoidal":
                             concept.append ([round (mu + sigma * z, 3) for z in refConcept[idx]])
                         else:
                             concept.append ([round (mu + sigma * refConcept[idx][0], 3), round (refConcept[idx][1] * sigma, 3)])
-                            scaleFct.append (refConcept[idx][1])
                     concept = _adjustBorder (concept, masked.min (), masked.max ())
-                    scaleFct = 1 if len (scaleFct) == 0 else sum (scaleFct) / len (scaleFct)
-                    percent = getSubarea (mu, scaleFct * sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
+                    percent = getSubarea (mu, sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
                     for idx in range (numFS):
                         info[renameFS[idx]] = [concept[idx], typeFS[idx], defaultColors[idx], round (percent[idx], 5)]
             else:
@@ -185,7 +190,7 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                 concept = np.round ([coords[(2 * k - 2):(2 * k + 2)] for k in range (1, numFS + 1)], 3).tolist ()
                 concept[centerIdx] = [round (mu, 3), round (widthFct * sigma, 3)]
                 concept = _adjustBorder (concept, masked.min (), masked.max ())
-                percent = getSubarea (mu, widthFct * sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
+                percent = getSubarea (mu, sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
                 for idx in range (numFS):
                     info[renameFS[idx]] = [concept[idx], typeFS_dict[len (concept[idx])], defaultColors[idx], round (percent[idx], 5)]
             else:
