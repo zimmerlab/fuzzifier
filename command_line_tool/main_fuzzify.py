@@ -7,7 +7,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import scanpy as sc
-from helper_functions import getConcept, fuzzify
+from helper_functions import getConcept, parseConcept, fuzzify
 
 # python main_fuzzifier.py --mtx rawValueMatrix --concept fuzzyConcepts --config config --output outputDirectory
 
@@ -27,28 +27,15 @@ with open (args.config) as f:
 const = {"-infinity": -np.inf, "-inf": -np.inf,
          "+infinity": np.inf, "+inf": np.inf, "infinity": np.inf, "inf": np.inf,
          "nan": np.nan, "na": np.nan, "zero": 0}
-minLevelCons = config.get ("left_noise_cutoff_constant", -np.inf); maxLevelCons = config.get ("right_noise_cutoff_constant", np.inf)
-minLevelCons = const.get (minLevelCons.lower (), -np.inf) if isinstance (minLevelCons, str) else minLevelCons
-maxLevelCons = const.get (maxLevelCons.lower (), np.inf) if isinstance (maxLevelCons, str) else maxLevelCons
-minLevelPct = config.get ("left_noise_cutoff_percent", 0); maxLevelPct = config.get ("right_noise_cutoff_percent", 1)
-minLevelPct = const.get (minLevelPct.lower (), 0) if isinstance (minLevelPct, str) else minLevelPct
-maxLevelPct = const.get (maxLevelPct.lower (), 1) if isinstance (maxLevelPct, str) else maxLevelPct
 defaultName = config.get ("key_default_concept", "DEFAULT"); direction = config.get ("fuzzify_per", "feature")
-renameLabels = config.get ("rename_labels", dict ())
+noMinNoise = config.get ("ignore_MIN-NOISE", False); noMaxNoise = config.get ("ignore_MAX-NOISE", False)
+scaleSum = config.get ("force_sum_one", True); renameLabels = config.get ("rename_labels", dict ())
 renameLabels = {const.get (val.lower ()): renameLabels[val] for val in renameLabels.keys () if isinstance (val, str)}
+if (noMinNoise and (not noMaxNoise)) or ((not noMinNoise) and noMaxNoise):
+    renameLabels["MIN-NOISE"] = "NOISE"; renameLabels["MAX-NOISE"] = "NOISE"
 
 with open (args.concept) as f:
-    tmp = json.load (f)
-concepts = dict ()
-for key in tmp:
-    concept = tmp[key].copy ()
-    concept["MIN-NOISE"] = concept.get ("MIN-NOISE", -np.inf); concept["MAX-NOISE"] = concept.get ("MAX-NOISE", np.inf)
-    concept["MIN-NOISE"] = const.get (concept["MIN-NOISE"].lower (), -np.inf) if isinstance (concept["MIN-NOISE"], str) else concept["MIN-NOISE"]
-    concept["MAX-NOISE"] = const.get (concept["MAX-NOISE"].lower (), np.inf) if isinstance (concept["MAX-NOISE"], str) else concept["MAX-NOISE"]
-    concept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x
-                               for x in concept.get ("label_values", list ())]
-    concepts[key] = concept
-del tmp
+    concepts = json.load (f)
 
 if not os.path.exists (args.output):
     os.makedirs (args.output, exist_ok = True)
@@ -67,6 +54,12 @@ else:
     raise TypeError
 
 if deriveConcepts:
+    minLevelCons = config.get ("left_noise_cutoff_constant", -np.inf); maxLevelCons = config.get ("right_noise_cutoff_constant", np.inf)
+    minLevelCons = const.get (minLevelCons.lower (), -np.inf) if isinstance (minLevelCons, str) else minLevelCons
+    maxLevelCons = const.get (maxLevelCons.lower (), np.inf) if isinstance (maxLevelCons, str) else maxLevelCons
+    minLevelPct = config.get ("left_noise_cutoff_percent", 0); maxLevelPct = config.get ("right_noise_cutoff_percent", 1)
+    minLevelPct = const.get (minLevelPct.lower (), 0) if isinstance (minLevelPct, str) else minLevelPct
+    maxLevelPct = const.get (maxLevelPct.lower (), 1) if isinstance (maxLevelPct, str) else maxLevelPct
     param_keys = ["value_type", "number_fuzzy_sets", "label_values",
                   "fit_Gaussian_curve", "use_scipy_optimization", "band_width_factor"]
     consType = concepts.get ("value_type", "fixed"); consValue = list (); bwFct = concepts.get ("band_width_factor", 1)
@@ -97,7 +90,7 @@ if deriveConcepts:
     defaultOutput = default.copy (); defaultOutput["label_values"] = outputLabels; allConcepts = {defaultName: defaultOutput}
     del values
 else:
-    default = concepts.get (defaultName, dict ())
+    default = parseConcept (concepts.get (defaultName, dict ()))
 if direction == "sample":
     maxSplit = 2
     for sample in samples:
@@ -123,10 +116,10 @@ if direction == "sample":
                 outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels
                 allConcepts[sample] = outputConcept
         else:
-            concept = concepts.get (sample, default).copy ()
-            if concept["number_fuzzy_sets"] == 0:
-                concept = default.copy ()
-        memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+            concept = concepts.get (sample, {"number_fuzzy_sets": 0}).copy ()
+            concept = default.copy () if concept["number_fuzzy_sets"] == 0 else parseConcept (concept)
+        memberships = fuzzify (values, concept, renameLabels = renameLabels, ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
+                               scaleSum = scaleSum).round (3)
         if not memberships.empty:
             memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{sample}.tsv"), sep = "\t")
 else:
@@ -148,12 +141,12 @@ else:
                             outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels
                             allConcepts[feature] = outputConcept
                     else:
-                        concept = concepts.get (feature, default).copy ()
-                        if concept["number_fuzzy_sets"] == 0:
-                            concept = default.copy ()
+                        concept = concepts.get (feature, {"number_fuzzy_sets": 0}).copy ()
+                        concept = default.copy () if concept["number_fuzzy_sets"] == 0 else parseConcept (concept)
                 else:
                     concept = default.copy ()
-                memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+                memberships = fuzzify (values, concept, renameLabels = renameLabels, ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
+                                       scaleSum = scaleSum).round (3)
                 if not memberships.empty:
                     memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{feature}.tsv"), sep = "\t")
     if args.mtx.lower ().endswith ("h5ad"):
@@ -171,12 +164,12 @@ else:
                         outputConcept = concept.copy (); outputConcept["label_values"] = outputLabels
                         allConcepts[feature] = outputConcept
                 else:
-                    concept = concepts.get (feature, default).copy ()
-                    if concept["number_fuzzy_sets"] == 0:
-                        concept = default.copy ()
+                    concept = concepts.get (feature, {"number_fuzzy_sets": 0}).copy ()
+                    concept = default.copy () if concept["number_fuzzy_sets"] == 0 else parseConcept (concept)
             else:
                 concept = default.copy ()
-            memberships = fuzzify (values, concept, renameLabels = renameLabels).round (3)
+            memberships = fuzzify (values, concept, renameLabels = renameLabels, ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
+                                   scaleSum = scaleSum).round (3)
             if not memberships.empty:
                 memberships.to_csv (os.path.join (args.output, f"fuzzyValues_{feature}.tsv"), sep = "\t")
 

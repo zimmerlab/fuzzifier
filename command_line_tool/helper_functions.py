@@ -201,11 +201,25 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
 
 
 
-def fuzzify (rawValues, concept, renameLabels = dict ()):
+def parseConcept (concept):
+    const = {"-infinity": -np.inf, "-inf": -np.inf,
+             "+infinity": np.inf, "+inf": np.inf, "infinity": np.inf, "inf": np.inf,
+             "nan": np.nan, "na": np.nan, "zero": 0}
+    newConcept = concept.copy ()
+    newConcept["MIN-NOISE"] = concept.get ("MIN-NOISE", -np.inf); newConcept["MAX-NOISE"] = concept.get ("MAX-NOISE", np.inf)
+    newConcept["MIN-NOISE"] = const.get (concept["MIN-NOISE"].lower (), -np.inf) if isinstance (concept["MIN-NOISE"], str) else concept["MIN-NOISE"]
+    newConcept["MAX-NOISE"] = const.get (concept["MAX-NOISE"].lower (), np.inf) if isinstance (concept["MAX-NOISE"], str) else concept["MAX-NOISE"]
+    newConcept["label_values"] = [const.get (x.lower ()) if isinstance (x, str) else x for x in concept.get ("label_values", list ())]
+    return newConcept
+
+
+
+def fuzzify (rawValues, concept, renameLabels = dict (), ignoreMinNoise = False, ignoreMaxNoise = False, scaleSum = True):
     if not concept:
         return pd.DataFrame (dtype = float)
     numFS = concept["number_fuzzy_sets"]; labels = concept.get ("label_values", list ())
-    minLevel = concept.get ("MIN-NOISE", -np.inf); maxLevel = concept.get ("MAX-NOISE", np.inf)
+    minLevel = -np.inf if ignoreMinNoise else concept.get ("MIN-NOISE", -np.inf)
+    maxLevel = np.inf if ignoreMaxNoise else concept.get ("MAX-NOISE", np.inf)
     if numFS == 0:
         return pd.DataFrame (dtype = float)
     masked = rawValues.replace (labels, np.nan).to_numpy (); memberships = pd.DataFrame (index = rawValues.index, dtype = float)
@@ -252,11 +266,11 @@ def fuzzify (rawValues, concept, renameLabels = dict ()):
             raise ValueError
     masked = pd.Series (masked, index = rawValues.index)
     if np.isfinite (maxLevel):
-        outliers = (masked >= maxLevel)
-        memberships.loc[outliers] = 0; memberships.insert (0, "MAX-NOISE", 0); memberships.loc[outliers, "MAX-NOISE"] = 1
+        outliers = (masked >= maxLevel); name = renameLabels.get ("MAX-NOISE", "MAX-NOISE")
+        memberships.loc[outliers] = 0; memberships.insert (0, name, 0); memberships.loc[outliers, name] = 1
     if np.isfinite (minLevel):
-        outliers = (masked <= minLevel)
-        memberships.loc[outliers] = 0; memberships.insert (0, "MIN-NOISE", 0); memberships.loc[outliers, "MIN-NOISE"] = 1
+        outliers = (masked <= minLevel); name = renameLabels.get ("MIN-NOISE", "MIN-NOISE")
+        memberships.loc[outliers] = 0; memberships.insert (0, name, 0); memberships.loc[outliers, name] = 1
     for val in labels[::-1]:
         if np.isnan (val):
             outliers = np.isnan (rawValues)
@@ -264,6 +278,8 @@ def fuzzify (rawValues, concept, renameLabels = dict ()):
             outliers = (rawValues == val)
         name = renameLabels.get (val, str (val))
         memberships.loc[outliers] = 0; memberships.insert (0, name, 0); memberships.loc[outliers, name] = 1
+    if scaleSum:
+        memberships = memberships.div (memberships.sum (axis = 1), axis = 0)
     return memberships
 
 
