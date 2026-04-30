@@ -1,0 +1,27 @@
+{
+    "label_values": ["-Infinity", "+Infinity", "NA"],
+    "left_noise_cutoff_constant": "-Infinity",
+    "right_noise_cutoff_constant": "+Infinity",
+    "left_noise_cutoff_percent": 0.05,
+    "right_noise_cutoff_percent": 0.95,
+    "key_default_concept": "DEFAULT",
+    "define_concept_per": "sample",
+    "define_concept_by": "default",
+    "fuzzy_variables": ["--", "-", "o", "+", "++"],
+    "parameters_default": {
+        "number_fuzzy_sets_per_side": 2,
+        "band_width_factor": 0.75,
+        "width_scale_factor": 1,
+        "slope_percentage": 0.5,
+        "use_scipy_optimization": true
+    },
+    "fuzzify_per": "sample",
+    "ignore_MIN-NOISE": true,
+    "ignore_MAX-NOISE": true,
+    "force_sum_one": true,
+    "rename_labels": {
+        "NAN": "NA",
+        "-Infinity": "-INF",
+        "Infinity": "+INF"
+    }
+}

@@ -1,0 +1,29 @@
+{
+    "label_values": [0],
+    "left_noise_cutoff_constant": "-Infinity",
+    "right_noise_cutoff_constant": "+Infinity",
+    "left_noise_cutoff_percent": 0,
+    "right_noise_cutoff_percent": 1,
+    "key_default_concept": "DEFAULT",
+    "define_concept_per": "matrix",
+    "define_concept_by": "constraint",
+    "fuzzy_variables": ["o", "*", "**", "***", "****"],
+    "parameters_constraint": {
+        "constraint_type": "fixed",
+        "constraints": [
+            [-1, -1, 0.95, 1.65],
+            [0.95, 1.65, 2.5, 3.5],
+            [2.5, 3.5, 4.5, 5.5],
+            [4.5, 5.5, 6.5, 7.5],
+            [6.5, 7.5, 11, 11]
+        ],
+        "use_scipy_optimization": false
+    },
+    "fuzzify_per": "feature",
+    "ignore_MIN-NOISE": false,
+    "ignore_MAX-NOISE": false,
+    "force_sum_one": false,
+    "rename_labels": {
+        "ZERO": "NA"
+    }
+}
