@@ -1,6 +1,6 @@
 R = R/R-4.5.0/bin/Rscript
 PYTHON = biopython
-DIR = command_line
+DIR = command_line_tool
 DATASET = miRNA
 BASEDIR = FlowSets_selection/$(DATASET)
 
@@ -119,7 +119,7 @@ RFC_markers:	$(wildcard $(BASEDIR)/FV_expression/numerator/submatrix_*/fuzzyValu
 	$(PYTHON) main_FlowSets.py --expression $(BASEDIR)/FV_expression/ \
 		--log2FC $(BASEDIR)/FV_paired_log2FC/ \
 		--metadata $(BASEDIR)/data/metadata.tsv \
-		--config ./config/FlowSets_$(DATASET)_RFC.json \
+		--config ./config/FlowSets.json \
 		--output $(BASEDIR)/results/raw_log2FC/
 
 
@@ -142,7 +142,7 @@ FFC_markers:	$(wildcard $(BASEDIR)/FV_expression/numerator/submatrix_*/fuzzyValu
 	$(PYTHON) main_FlowSets.py --expression $(BASEDIR)/FV_expression/ \
 		--log2FC $(BASEDIR)/FV_fuzzy_log2FC/ \
 		--metadata $(BASEDIR)/data/metadata.tsv \
-		--config ./config/FlowSets_$(DATASET)_FFC.json \
+		--config ./config/FlowSets.json \
 		--output $(BASEDIR)/results/fuzzy_log2FC/
 
 
