@@ -424,9 +424,9 @@ def server (input, output, session):
             ui.modal_show (message)
         else:
             mtx = matrix.get (); mask = np.isnan (mtx.replace (labelValues.get (), np.nan))
-            mtx = mtx.mask (labelMask | (~np.isfinite (mtx))); labelMask.set (mask)
+            mtx = mtx.mask (mask | (~np.isfinite (mtx))); labelMask.set (mask)
             minLevel = noiseCutoffLeft.get (); maxLevel = noiseCutoffRight.get ()
-            mask = pd.DataFrmae ({idx: (mtx.loc[idx] <= minLevel.get (idx, -np.inf)) | (mtx.loc[idx] >= maxLevel.get (idx, np.inf))
+            mask = pd.DataFrame ({idx: (mtx.loc[idx] <= minLevel.get (idx, -np.inf)) | (mtx.loc[idx] >= maxLevel.get (idx, np.inf))
                                   for idx in mtx.index}).T
             mtx = mtx.mask (mask); noiseMask.set (mask)
             xMin = np.floor (mtx.min (axis = None, skipna = True)) - 1; xMax = np.ceil (mtx.max (axis = None, skipna = True)) + 1
@@ -561,8 +561,11 @@ def server (input, output, session):
         ticks = pctProp.get (); widths = allStd.get ()
         if ticks.empty or widths.empty:
             return
-        feature = input.viewFeature_cons () if input.fuzzyBy_cons () == "feature" else "ALL"
-        num = numCards_cons.get (); ticks = ticks.loc[feature]
+        feature = input.viewFeature_cons () if input.fuzzyBy_cons () == "feature" else "ALL"; num = numCards_cons.get ()
+        try:
+            ticks = ticks.loc[feature]
+        except KeyError:
+            return
         for idx in range (1, num + 1):
             for pos in ["a", "b", "c", "d"]:
                 if idx == 1 and pos in ["a", "b"]:
@@ -595,8 +598,8 @@ def server (input, output, session):
 
     @render.plot
     def globalDist_cons ():
-        mtx = matrix.get (); xRange = plotRangeGlobal.get (); valueRange = rangeGlobal.get ()
-        if mtx.empty or len (xRange) != 2 or len (valueRange) != 2:
+        mtx = matrix.get (); xRange = plotRangeGlobal.get (); valueRange = rangeGlobal.get (); ticks = pctProp.get ()
+        if mtx.empty or len (xRange) != 2 or len (valueRange) != 2 or ticks.empty:
             return
         mtx = mtx.replace (labelValues.get () + [-np.inf, np.inf], np.nan)
         widths = allStd.get (); feature = input.viewFeature_cons ()
@@ -604,20 +607,20 @@ def server (input, output, session):
         maxLevel = noiseCutoffRight.get ().get (feature, np.inf)
         fig, ax = plt.subplots (figsize = (8, 5))
         if feature == "ALL":
-            pltData = mtx.melt ()["value"]
+            pltData = mtx.melt ()["value"]; ticks = ticks.loc["ALL"]
             if input.numBins_cons () != 0:
                 ax.hist (pltData.dropna (), bins = input.numBins_cons (), color = "lightgray")
             pctUnlabelled = len (pltData.mask ((pltData <= minLevel) | (pltData >= maxLevel)).dropna ()) / len (pltData)
             del pltData
         else:
             try:
-                pltData = mtx.loc[feature]
+                pltData = mtx.loc[feature]; ticks = ticks.loc[feature]
                 if input.numBins_cons () != 0:
                     ax.hist (pltData.dropna (), bins = input.numBins_cons (), color = "lightgray")
                 pctUnlabelled = len (pltData.mask ((pltData <= minLevel) | (pltData >= maxLevel)).dropna ()) / len (pltData)
                 del pltData
             except KeyError:
-                pctUnlabelled = 0
+                return fig
         ax.set_xlim (xRange); ax.set_title (f"unlabelled values - {pctUnlabelled:.1%}", size = 15)
         ax.tick_params (axis = "both", which = "major", labelsize = 8)
         if minLevel > xRange[0]:
@@ -625,19 +628,14 @@ def server (input, output, session):
         if maxLevel < xRange[1]:
             ax.axvline (maxLevel, color = "black", linestyle = "dashed")
         ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of unlabelled values", size = 10)
-        num = numCards_cons.get (); ticks = pctProp.get ()
-        if ticks.empty:
-            fig.tight_layout ()
-            return fig
+        num = numCards_cons.get ()
         if num > 0 and len (valueRange) == 2:
             feature = "ALL" if input.fuzzyBy_cons () == "dataset" else feature
             ax2 = ax.twinx ()
             ax2.set_xlim (xRange); ax2.set_ylim ((0, 1.05))
             ax2.tick_params (axis = "y", which = "major", labelsize = 8)
             ax2.set_xlabel ("raw value", size = 10); ax2.set_ylabel ("fuzzy value", size = 10)
-            if ticks.empty:
-                fig.tight_layout (); return fig
-            ticks = ticks.loc[feature]; names = list (); colors = list (); concept = list (); handles = list ()
+            names = list (); colors = list (); concept = list (); handles = list ()
             for idx in range (1, num + 1):
                 names.append (input[f"name{idx}_cons"] ()); colors.append (input[f"color{idx}_cons"] ())
                 handles.append (Line2D ([0], [0], color = colors[-1], linewidth = 2))
@@ -755,29 +753,29 @@ def server (input, output, session):
 
     @render.plot
     def globalDist_fit ():
-        mtx = matrix.get (); xRange = plotRangeGlobal.get (); num = numCards_fit.get ()
-        if mtx.empty or len (xRange) != 2:
+        mtx = matrix.get (); xRange = plotRangeGlobal.get (); num = numCards_fit.get (); fit = curveFit.get ()
+        if mtx.empty or len (xRange) != 2 or fit.empty:
             return
         mtx = mtx.replace (labelValues.get () + [-np.inf, np.inf], np.nan)
-        fit = curveFit.get (); feature = input.viewFeature_fit ()
+        feature = input.viewFeature_fit ()
         minLevel = noiseCutoffLeft.get ().get (feature, -np.inf)
         maxLevel = noiseCutoffRight.get ().get (feature, np.inf)
         fig, ax = plt.subplots (figsize = (8, 5))
         if feature == "ALL":
-            pltData = mtx.melt ()["value"]
+            pltData = mtx.melt ()["value"]; mu, sigma = fit.loc["ALL"]
             if input.numBins_fit () != 0:
                 ax.hist (pltData.dropna (), bins = input.numBins_fit (), color = "lightgray")
             pctUnlabelled = len (pltData.mask ((pltData <= minLevel) | (pltData >= maxLevel)).dropna ()) / len (pltData)
             del pltData
         else:
             try:
-                pltData = mtx.loc[feature]
+                pltData = mtx.loc[feature]; mu, sigma = fit.loc[feature]
                 if input.numBins_fit () != 0:
                     ax.hist (pltData.dropna (), bins = input.numBins_fit (), color = "lightgray")
                 pctUnlabelled = len (pltData.mask ((pltData <= minLevel) | (pltData >= maxLevel)).dropna ()) / len (pltData)
                 del pltData
             except KeyError:
-                pctUnlabelled = 0
+                pctUnlabelled = 0; return fig
         ax.set_xlim (xRange); ax.set_title (f"unlabelled values - {pctUnlabelled:.1%}", size = 15)
         if minLevel > xRange[0]:
             ax.axvline (minLevel, color = "black", linestyle = "dashed")
@@ -785,9 +783,9 @@ def server (input, output, session):
             ax.axvline (maxLevel, color = "black", linestyle = "dashed")
         ax.tick_params (axis = "both", which = "major", labelsize = 8)
         ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of unlabelled values", size = 10)
-        if (not fit.empty) and num > 0:
+        if num > 0:
             feature = "ALL" if input.fuzzyBy_fit () == "dataset" else feature
-            mu, sigma = fit.loc[feature]; names = list (); colors = list (); concept = list (); handles = list ()
+            names = list (); colors = list (); concept = list (); handles = list ()
             ax2 = ax.twinx (); ax2.set_xlim (xRange); ax2.set_ylim ((0, 1.05))
             ax2.tick_params (axis = "y", which = "major", labelsize = 8)
             ax2.set_xlabel ("raw value", size = 10); ax2.set_ylabel ("fuzzy value", size = 10)
@@ -1036,17 +1034,19 @@ def server (input, output, session):
         if mtx.empty or (not concepts) or len (xRange) != 2:
             return
         concept = concepts.get (input.viewFeature_concept_visual (), dict ()); num = concept.get ("number_fuzzy_sets", 0)
-        minLevel = concept.get ("MIN-NOISE", -np.inf); maxLevel = concept.get ("MAX-NOISE", np.inf)
+        minLevel = concept.get ("MIN-NOISE", -np.inf); minLevel = -np.inf if isinstance (minLevel, str) else minLevel
+        maxLevel = concept.get ("MAX-NOISE", np.inf); maxLevel = np.inf if isinstance (maxLevel, str) else maxLevel
         xMin = max (xRange[0], minLevel, selectRange[0]); xMax = min (xRange[1], maxLevel, selectRange[1])
         featureRaw = input.viewFeature_raw_visual ()
         if featureRaw == "ALL":
             values = mtx.melt ()["value"]
+            pctUnlabelled = len (values.mask ((values <= minLevel) | (values >= maxLevel)).dropna ()) / len (values)
         else:
             try:
                 values = mtx.loc[featureRaw]
+                pctUnlabelled = len (values.mask ((values <= minLevel) | (values >= maxLevel)).dropna ()) / len (values)
             except KeyError:
-                values = pd.Series (dtype = float)
-        pctUnlabelled = len (values.mask ((values <= minLevel) | (values >= maxLevel)).dropna ()) / len (values)
+                values = pd.Series (dtype = float); pctUnlabelled = 0.0
         fig, ax = plt.subplots (figsize = (8, 5))
         if input.numBins_visual () != 0:
             ax.hist (values, bins = input.numBins_visual (), color = "lightgray")
@@ -1089,7 +1089,8 @@ def server (input, output, session):
         if mtx.empty or (not concepts) or len (xRange) != 2:
             return
         concept = concepts.get (input.viewFeature_concept_visual (), dict ()); num = concept.get ("number_fuzzy_sets", 0)
-        minLevel = concept.get ("MIN-NOISE", -np.inf); maxLevel = concept.get ("MAX-NOISE", np.inf)
+        minLevel = concept.get ("MIN-NOISE", -np.inf); minLevel = -np.inf if isinstance (minLevel, str) else minLevel
+        maxLevel = concept.get ("MAX-NOISE", np.inf); maxLevel = np.inf if isinstance (maxLevel, str) else maxLevel
         xMin = max (xRange[0], minLevel, selectRange[0]); xMax = min (xRange[1], maxLevel, selectRange[1])
         expectation = dict (); params = list ()
         for key in concept.keys ():
