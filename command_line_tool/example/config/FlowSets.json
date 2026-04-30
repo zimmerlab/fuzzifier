@@ -1,0 +1,7 @@
+{
+    "expression_fuzzy_sets": ["NO_EXP", "NOISE", "LOW", "low", "MEDIUM", "high", "HIGH"],
+    "log2FC_fuzzy_sets": ["NA", "-INF", "--", "-", "o", "+", "++", "+INF"],
+    "metadata_index_column": "sample",
+    "metadata_cluster_column": "context",
+    "log2FC_flow_cutoff": 0.75
+}
