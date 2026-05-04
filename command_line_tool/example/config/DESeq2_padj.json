@@ -1,5 +1,5 @@
 {
-    "label_values": [0],
+    "label_zero": true,
     "left_noise_cutoff_constant": "-Infinity",
     "right_noise_cutoff_constant": "+Infinity",
     "left_noise_cutoff_percent": 0,

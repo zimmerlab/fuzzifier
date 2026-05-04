@@ -1,5 +1,5 @@
 {
-    "label_values": ["-Infinity", "+Infinity", "NA"],
+    "label_zero": false,
     "left_noise_cutoff_constant": "-Infinity",
     "right_noise_cutoff_constant": "+Infinity",
     "left_noise_cutoff_percent": 0.05,
