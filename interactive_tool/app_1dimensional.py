@@ -24,8 +24,7 @@ app_ui = ui.page_fluid (
                         4,
                         ui.card (
                             ui.input_file ("crispMatrix", "Select raw value matrix (.TSV):", accept = ".tsv", multiple = False, width = "80%"),
-                            ui.input_checkbox_group ("specValue", "Select values to label:", choices = {"-Inf": "-inf", "+Inf": "+inf", "0": "zero"},
-                                                     selected = ("-Inf", "+Inf", "0"), inline = True),
+                            ui.input_switch ("labelZero", "Exclude zeros?", False),
                             ui.input_switch ("addNoise", "Add category for noise?", False),
                             ui.panel_conditional (
                                 "input.addNoise === true",
@@ -393,16 +392,20 @@ def server (input, output, session):
         if maxLevel < input.zoom ()[1]:
             ax.axvline (maxLevel, color = "black", linestyle = "dashed")
         ax.tick_params (axis = "both", which = "major", labelsize = 8)
-        ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of unlabelled values", size = 10)
+        ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of valid values", size = 10)
         return fig
     
 
     @reactive.effect
     def _ ():
-        labels = [float (x) for x in input.specValue ()]
-        if matrix.get ().empty:
+        mtx = matrix.get (); labels = [0] if input.labelZero () else list ()
+        if mtx.empty:
             return
-        if np.isnan (matrix.get ()).any (axis = None):
+        if ((mtx < 0) & (~np.isfinite (mtx))).any (axis = None):
+            labels.append (-np.inf)
+        if ((mtx > 0) & (~np.isfinite (mtx))).any (axis = None):
+            labels.append (np.inf)
+        if np.isnan (mtx).any (axis = None):
             labels.append (np.nan)
         labelValues.set (labels)
 
@@ -429,6 +432,7 @@ def server (input, output, session):
             mask = pd.DataFrame ({idx: (mtx.loc[idx] <= minLevel.get (idx, -np.inf)) | (mtx.loc[idx] >= maxLevel.get (idx, np.inf))
                                   for idx in mtx.index}).T
             mtx = mtx.mask (mask); noiseMask.set (mask)
+            print (labelValues.get ())
             xMin = np.floor (mtx.min (axis = None, skipna = True)) - 1; xMax = np.ceil (mtx.max (axis = None, skipna = True)) + 1
             rangeGlobal.set ([xMin, xMax])
             propTicks = mtx.quantile (np.linspace (0, 1, 1001), axis = 1, numeric_only = True).T
@@ -621,13 +625,13 @@ def server (input, output, session):
                 del pltData
             except KeyError:
                 return fig
-        ax.set_xlim (xRange); ax.set_title (f"unlabelled values - {pctUnlabelled:.1%}", size = 15)
+        ax.set_xlim (xRange); ax.set_title (f"valid values - {pctUnlabelled:.1%}", size = 15)
         ax.tick_params (axis = "both", which = "major", labelsize = 8)
         if minLevel > xRange[0]:
             ax.axvline (minLevel, color = "black", linestyle = "dashed")
         if maxLevel < xRange[1]:
             ax.axvline (maxLevel, color = "black", linestyle = "dashed")
-        ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of unlabelled values", size = 10)
+        ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of valid values", size = 10)
         num = numCards_cons.get ()
         if num > 0 and len (valueRange) == 2:
             feature = "ALL" if input.fuzzyBy_cons () == "dataset" else feature
@@ -776,13 +780,13 @@ def server (input, output, session):
                 del pltData
             except KeyError:
                 pctUnlabelled = 0; return fig
-        ax.set_xlim (xRange); ax.set_title (f"unlabelled values - {pctUnlabelled:.1%}", size = 15)
+        ax.set_xlim (xRange); ax.set_title (f"valid values - {pctUnlabelled:.1%}", size = 15)
         if minLevel > xRange[0]:
             ax.axvline (minLevel, color = "black", linestyle = "dashed")
         if maxLevel < xRange[1]:
             ax.axvline (maxLevel, color = "black", linestyle = "dashed")
         ax.tick_params (axis = "both", which = "major", labelsize = 8)
-        ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of unlabelled values", size = 10)
+        ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of valid values", size = 10)
         if num > 0:
             feature = "ALL" if input.fuzzyBy_fit () == "dataset" else feature
             names = list (); colors = list (); concept = list (); handles = list ()
@@ -1060,7 +1064,7 @@ def server (input, output, session):
         if selectRange[1] < xRange[1]:
             ax.axvline (selectRange[1], color = "darkgray", linestyle = "dashed")
         ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of finite values", size = 10)
-        ax.set_title (f"percent of unlabelled values - {pctUnlabelled:.1%}", size = 15)
+        ax.set_title (f"percent of valid values - {pctUnlabelled:.1%}", size = 15)
         ax2 = ax.twinx (); ax2.set_ylim ((0, 1.05)); ax2.set_ylabel ("fuzzy value", size = 10)
         names = list (); colors = list (); params = list (); handles = list ()
         for key in concept.keys ():
