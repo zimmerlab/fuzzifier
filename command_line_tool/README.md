@@ -21,7 +21,7 @@ Two input files are necessary, namely the raw value matrix `mtx` and the config 
 
 - `config`: Config file containing detailed parameter settings in `.json` format.
 
-    - `label_values`: List of specific values to be excluded from fuzzy concept definition, such as $\pm\infty$, zero and NA.
+    - `label_zero`: Whether to exclude zeros in fuzzy concept derivation and to add an extra fuzzy set for zeros in fuzzification. Other specific values such as $\pm\infty$ and missing values (NaN) are detected automatically.
 
     - Cutoff for minimally accepted values: All values no larger than this cutoff are regarded as noise and discarded in the fuzzy concept definition. Two types of cutoffs are available, and the larger one is chosen as cutoff.
 
@@ -90,6 +90,8 @@ Two output files are generated. `concepts_detailed.json` contains all fuzzy conc
 
 Memberships are calculated for the given raw value matrix based on the fuzzy concepts. Selected specific values and noise are labelled in an additional boolean fuzzy set, respectively, where each specific value has membership 1 in the corresponding labelling fuzzy set and membership 0 otherwise.
 
+The results are evaluated after each fuzzification by comparing the observed percentage of raw values for each fuzzy set to the expected one. If the absolute difference for one fuzzy set is lower than a given cutoff, e.g. 10%, then it can be assumed that the fuzzy concept fits the raw value distribution in this particular fuzzy set.
+
 ### Input Files and Formats
 
 - `mtx`: Raw value matrix, either in `.tsv` or `.h5ad` format. The raw value matrix contains all values for fuzzy concept definition, which are required to be numeric values. It is neither required that the raw value matrix remains the same as that used for fuzzy concept definition, nor should all entries match the row or column names in the matrix.
@@ -98,7 +100,7 @@ Memberships are calculated for the given raw value matrix based on the fuzzy con
 
     - Constraints of fuzzy concepts: Concrete fuzzy concepts will be derived for each feature or sample, with an additional default fuzzy concept defined on the whole raw value matrix. The derivation follows the fuzzy concept definition with option `constraint` in `define_concept_by`. The derived fuzzy concepts are delivered as an additional output in `.json` format.
     
-    - Concrete fuzzy concepts: The fuzzy concepts are directly used for fuzzification. For each fuzzification, the script searches for the fuzzy concept that matches the current row or column name in the raw value matrix. Otherwise the default fuzzy concept is applied if the corresponding name is not found.
+    - Concrete fuzzy concepts: The fuzzy concepts are directly used for fuzzification. For each fuzzification, the script searches for the fuzzy concept that matches the current row or column name in the raw value matrix. Otherwise the default fuzzy concept is applied if the corresponding name is not found. It is also recorded whether an individual fuzzy concept is available or not.
 
 - `config`: Config file containing detailed parameter settings in `.json` format.
 
@@ -120,6 +122,34 @@ Memberships are calculated for the given raw value matrix based on the fuzzy con
 
     - `rename_labels`: Dictionary for renaming of the labelling fuzzy sets.
 
+    - `generate_report_plots`: Whether to generate fuzzy report figure for each feature or sample after fuzzification.
+
 ### Output Files and Formats
 
-The fuzzy values are delivered as `.tsv` files after each feature-wise or sample-wise fuzzification, starting with prefix `fuzzyValues_`. Each of these files contains fuzzy values in the additional labelling fuzzy sets and the defined fuzzy sets as columns. For a feature-wise (sample-wise) fuzzificaiton, each row represents a sample (feature) from the raw value matrix. All fuzzy values are rounded to 3 decimals in default.
+Two subdirectories are generated for fuzzy values (`fuzzy_values`) and evaluations (`evaluations`), respectively. Given a constrained fuzzy concept as input, feature-wise or sample-wise fuzzy concepts will automatically be derived based on the input raw value matrix and stored in `concepts_detailed.json` in the main output directory. A third subdirectory, `reports`, is created if individual fuzzy report figures are to be generated.
+
+- `fuzzy_values`: Subdirectory for fuzzy values. The fuzzy values are delivered as `.tsv` files after each feature-wise or sample-wise fuzzification, starting with prefix `fuzzyValues_`. Each of these files contains fuzzy values in the additional labelling fuzzy sets and the defined fuzzy sets as columns. For a feature-wise (sample-wise) fuzzificaiton, each row represents a sample (feature) from the raw value matrix. All fuzzy values are rounded to 3 decimals in default.
+
+- `evaluations`: Subdirectory for evaluation tables and figures.
+
+    - `expected_percentage.tsv`: Table of expected percentage of raw values per fuzzy set per feature / sample (expectation). These values are summarized from the corresponding fuzzy concept.
+
+    - `expected_percentage.png`: Clustered heatmap of expectation.
+
+    - `observed_percentage.tsv`: Table of observed percentage of raw values per fuzzy set per feature / sample (observation). It is defined as the percentage of raw values with their highest fuzzy value in one fuzzy set.
+
+    - `observed_percentage.png`: Clustered heatmap of observation.
+
+    - `deviation.png`: Clustered heatmap of the difference between observation and expectation.
+
+    - `summary.tsv`: Summary table for each fuzzification.
+    
+        - `deviation`: RMSD between observation and expectation.
+
+        - `individual_concept`: Whether the feature / sample was fuzzified with a fuzzy concept that has the same name as the feature / sample name.
+
+- `reports`: Subdirectory for fuzzy report per feature / sample. It is a figure with 2 subplots, and a prefix `report_` followed by the corresponding feature / sample name.
+
+    - Top panel: Fuzzy concept with the raw value distribution in background. A dashed line is added on the left or the right side of the subplot if there is any noise value, indicating the corresponding noise cutoff.
+
+    - Bottom panel: Categorical heatmap for observation, expectation and their difference in each fuzzy set. The corresponding percentages are shown by the percentage labels in the first 2 rows above the red line. On the other hand, the difference in the last row below the red line is categorized into 3 groups by comparing to a given cutoff $\pm$ 10%.
