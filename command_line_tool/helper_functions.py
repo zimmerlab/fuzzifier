@@ -1,9 +1,11 @@
-import os
-import json
 import numpy as np
 import pandas as pd
-import scanpy as sc
+import seaborn as sns
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from scipy import optimize, signal, stats
+
+sns.set_theme (style = "white", rc = {"axes.facecolor": (0, 0, 0, 0)})
 
 
 def _fitMode (values, bwFct = 1, useFit = True, useOptimize = False):
@@ -216,17 +218,18 @@ def parseConcept (concept):
 
 def fuzzify (rawValues, concept, renameLabels = dict (), ignoreMinNoise = False, ignoreMaxNoise = False, scaleSum = True):
     if not concept:
-        return pd.DataFrame (dtype = float)
+        return pd.DataFrame (dtype = float), pd.DataFrame (dtype = float), np.nan
     numFS = concept["number_fuzzy_sets"]; labels = concept.get ("label_values", list ())
     minLevel = -np.inf if ignoreMinNoise else concept.get ("MIN-NOISE", -np.inf)
     maxLevel = np.inf if ignoreMaxNoise else concept.get ("MAX-NOISE", np.inf)
     if numFS == 0:
-        return pd.DataFrame (dtype = float)
+        return pd.DataFrame (dtype = float), pd.DataFrame (dtype = float), np.nan
     masked = rawValues.replace (labels, np.nan).to_numpy (); memberships = pd.DataFrame (index = rawValues.index, dtype = float)
+    expectation = pd.Series (dtype = float)
     for key in concept.keys ():
         if key in ["number_fuzzy_sets", "label_values", "MIN-NOISE", "MAX-NOISE"]:
             continue
-        params, typeFS, _, _ = concept[key]
+        params, typeFS, _, exp = concept[key]; expectation[key] = exp
         if typeFS == "trapezoidal":
             if params[0] == params[1] and params[1] == params[2] and params[2] == params[3]:
                 memberships[key] = 0
@@ -280,6 +283,121 @@ def fuzzify (rawValues, concept, renameLabels = dict (), ignoreMinNoise = False,
         memberships.loc[outliers] = 0; memberships.insert (0, name, 0); memberships.loc[outliers, name] = 1
     if scaleSum:
         memberships = memberships.div (memberships.sum (axis = 1), axis = 0)
-    return memberships
+    observation = memberships.idxmax (axis = 1).value_counts (normalize = True)
+    observation = pd.Series ([observation.get (idx, 0) for idx in expectation.index], index = expectation.index)
+    deviation = np.sqrt (((observation - expectation) ** 2).mean ())
+    return memberships, expectation, observation, deviation
+
+
+
+def _getLines (params, cutoffs, colors):
+    lines = list (); curves = list (); numFuzzySets = len (params)
+    if cutoffs[0] >= cutoffs[1]:
+        return lines, curves
+    if len (colors) == 0:
+        colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple",
+                  "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan",
+                  "blue", "orange", "green", "red", "purple",
+                  "brown", "pink", "gray", "olive", "cyan"]
+    for idx in range (numFuzzySets):
+        p = params[idx]
+        if len (p) == 2:
+            if p[1] > 0:
+                xValues = np.linspace (*cutoffs, 1000)
+                yValues = np.exp (-(xValues - p[0]) ** 2 / (2 * p[1] ** 2))
+                curves.append ([xValues, yValues, colors[idx]])
+            else:
+                continue
+        elif len (p) == 4:
+            if cutoffs[1] <= p[0] and p[0] != p[1]:
+                continue
+            elif cutoffs[1] > p[0] and cutoffs[1] < p[1]:
+                y_cutoffs = [(cutoffs[0] - p[0]) / (p[1] - p[0]), (cutoffs[1] - p[0]) / (p[1] - p[0])]
+                lines += [(max (cutoffs[0], p[0]), cutoffs[1]), (max (y_cutoffs[0], 0), y_cutoffs[1]), colors[idx]]
+            elif cutoffs[1] >= p[1] and cutoffs[1] <= p[2]:
+                if cutoffs[0] < p[1]:
+                    y_cutoffs = [0 if p[0] == p[1] else (cutoffs[0] - p[0]) / (p[1] - p[0]), 1]
+                    lines += [(max (cutoffs[0], p[0]), p[1]), (max (y_cutoffs[0], 0), 1), colors[idx],
+                              (p[1], cutoffs[1]), (1, 1), colors[idx]]
+                else:
+                    lines += [(cutoffs[0], cutoffs[1]), (1, 1), colors[idx]]
+            else:
+                if cutoffs[0] < p[1]:
+                    y_cutoffs = [0 if p[0] == p[1] else (cutoffs[0] - p[0]) / (p[1] - p[0]),
+                                 0 if p[2] == p[3] else (cutoffs[1] - p[3]) / (p[2] - p[3])]
+                    lines += [(max (cutoffs[0], p[0]), p[1]), (max (y_cutoffs[0], 0), 1), colors[idx],
+                              (p[1], p[2]), (1, 1), colors[idx],
+                              (p[2], min (cutoffs[1], p[3])), (1, max (y_cutoffs[1], 0)), colors[idx]]
+                elif cutoffs[0] >= p[1] and cutoffs[0] <= p[2]:
+                    y_cutoffs = [1, 0 if p[2] == p[3] else (cutoffs[1] - p[3]) / (p[2] - p[3])]
+                    lines += [(cutoffs[0], p[2]), (1, 1), colors[idx],
+                              (p[2], min (cutoffs[1], p[3])), (1, max (y_cutoffs[1], 0)), colors[idx]]
+                else:
+                    if p[2] == p[3]:
+                        return
+                    y_cutoffs = [(cutoffs[0] - p[3]) / (p[2] - p[3]), (cutoffs[1] - p[3]) / (p[2] - p[3])]
+                    lines += [(cutoffs[0], min (cutoffs[1], p[3])), (y_cutoffs[0], max (y_cutoffs[1], 0)), colors[idx]]
+        else:
+            raise ValueError
+    return lines, curves
+
+
+
+def getReport (values, concept, expectation, observation, title = "", ignoreMinNoise = False, ignoreMaxNoise = False,
+               outputPath = "report.png"):
+    cutoff = 0.1; plotCutoff = 0.01 if cutoff == 0 else cutoff
+    masked = values.replace (concept.get ("label_values", list ()) + [-np.inf, np.inf], np.nan).dropna ()
+    minimum = np.floor (masked.min ()); maximum = np.ceil (masked.max ())
+    minLevel = -np.inf if ignoreMinNoise else concept.get ("MIN-NOISE", -np.inf)
+    maxLevel = np.inf if ignoreMaxNoise else concept.get ("MAX-NOISE", np.inf)
+    names = list (); params = list (); colors = list ()
+    for key in concept:
+        if key in ["number_fuzzy_sets", "label_values", "MIN-NOISE", "MAX-NOISE"]:
+            continue
+        names.append (key); params.append (concept[key][0]); colors.append (concept[key][2])
+    lines, curves = _getLines (params, [max (minimum, minLevel), min (maximum, maxLevel)], colors)
+    handles = [Line2D ([0], [0], color = c, linewidth = 2) for c in colors]
+    annData = pd.DataFrame ({"observation": observation, "expectation": expectation, "deviation": observation - expectation}).T
+    pltData = annData.copy (); pltData.loc[["observation", "expectation"]] = 0
+    fig = plt.figure (figsize = (8, 6), layout = "constrained"); gs = fig.add_gridspec (2, 3)
+    ax = fig.add_subplot (gs[0, :3])
+    ax.hist (masked, bins = 25, color = "silver"); ax.set_xlim ((minimum, maximum))
+    if minLevel > minimum:
+        ax.axvline (minLevel, color = "black", linestyle = "dashed")
+    if maxLevel < maximum:
+        ax.axvline (maxLevel, color = "black", linestyle = "dashed")
+    ax.set_xlabel ("raw value", size = 10); ax.set_ylabel ("number of raw values", size = 10)
+    ax2 = ax.twinx (); ax2.set_ylim ((0, 1.05)); ax2.set_ylabel ("fuzzy value", size = 10)
+    ax2.plot (*lines, linewidth = 2)
+    for curve in curves:
+        ax2.plot (curve[0], curve[1], c = curve[2], linewidth = 2)
+    ax2.legend (handles, names, facecolor = "white")
+    ax = fig.add_subplot (gs[1, :])
+    sns.heatmap (pltData, vmin = -3 * cutoff, vmax = 3 * cutoff, center = 0, cmap = sns.color_palette ("vlag", 3),
+                 annot = annData, fmt = ".1%", linewidth = 0.5, linecolor = "black", ax = ax)
+    ax.axhline (3, color = "black", linewidth = 2); ax.axvline (pltData.shape[1], color = "black", linewidth = 2)
+    ax.axhline (2, color = "red", linewidth = 3)
+    ax.set_xticks (ax.get_xticks ()); ax.set_xticklabels (ax.get_xticklabels (), rotation = 0, ha = "center"); ax.xaxis.tick_bottom ()
+    ax.set_yticks (ax.get_yticks ()); ax.set_yticklabels (ax.get_yticklabels (), rotation = 0, ha = "right"); ax.yaxis.tick_left ()
+    ax.set_xlabel (""); ax.set_ylabel ("observation - expectation", size = 10); ax.yaxis.set_label_position ("right")
+    ax.set_title ("categorial Gaussian test", size = 12)
+    colorbar = ax.collections[0].colorbar; colorbar.set_ticks ([-2 * plotCutoff, -plotCutoff, 0, plotCutoff, 2 * plotCutoff])
+    colorbar.set_ticklabels (["not\naccepted", f"{-cutoff:.1%}", "accepted", f"{cutoff:.1%}", "not\naccepted"], size = 9)
+    if title != "":
+        fig.suptitle (title, size = 15)
+    plt.savefig (outputPath); plt.close ()
+
+
+
+def getClusterMap (df, palette, axisLabel, center = None, title = "", outputPath = "clustermap.png"):
+    if center is None:
+        g = sns.clustermap (df, dendrogram_ratio = (0.2, 0.1), cmap = palette, yticklabels = False, figsize = (5, 6))
+    else:
+        g = sns.clustermap (df, dendrogram_ratio = (0.2, 0.1), cmap = palette, center = center, yticklabels = False, figsize = (5, 6))
+    g.ax_heatmap.set_xticklabels (g.ax_heatmap.get_xticklabels (), size = 9, rotation = 0, ha = "center")
+    g.ax_heatmap.xaxis.tick_bottom (); g.ax_heatmap.set_ylabel (axisLabel, size = 10)
+    if title != "":
+        g.fig.suptitle (title, size = 12.5)
+    plt.savefig (outputPath); plt.close ()
 
 
