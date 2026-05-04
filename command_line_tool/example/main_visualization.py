@@ -186,7 +186,7 @@ def main ():
 
     with open (os.path.join (configDir, "RFC.json")) as f:
         RFC_config = parseConfig (json.load (f))
-    rawFC_FV, log2FC_nameDict = readFV (os.path.join (args.baseDir, "FV_paired_log2FC"), RFC_config["saved_by"],
+    rawFC_FV, log2FC_nameDict = readFV (os.path.join (args.baseDir, "FV_paired_log2FC", "fuzzy_values"), RFC_config["saved_by"],
                                         nameDict = {"FS": RFC_config["label_sets"] + RFC_config["fuzzy_sets"]})
     concept = getDefaultConcept (RFC_config["number_fuzzy_sets"], *RFC_config["reconstruct_params"])
     plot_concept (concept, RFC_config["fuzzy_sets"], [colorDict[FS] for FS in RFC_config["fuzzy_sets"]], [-6, 6], "z-score",
@@ -197,13 +197,12 @@ def main ():
         FFC_config = parseConfig (json.load (f))
     log2FC_nameDict = {"feature": log2FC_nameDict["feature"], "sample": log2FC_nameDict["sample"],
                        "FS": FFC_config["label_sets"] + FFC_config["fuzzy_sets"]}
-    fuzzyFC_FV, _ = readFV (os.path.join (args.baseDir, "FV_fuzzy_log2FC"), FFC_config["saved_by"],
-                            nameDict = log2FC_nameDict)
+    fuzzyFC_FV, _ = readFV (os.path.join (args.baseDir, "FV_fuzzy_log2FC"), FFC_config["saved_by"], nameDict = log2FC_nameDict)
     plot_cardinality (fuzzyFC_FV, log2FC_nameDict, clustering, os.path.join (args.output, "cardinality_fuzzyFC.png"))
 
     with open (os.path.join (configDir, "DESeq2_log2FC.json")) as f:
         DESeq2_config = parseConfig (json.load (f))
-    log2FC_FV, DESeq2_nameDict = readFV (os.path.join (args.baseDir, "FV_DESeq2", "log2FC"), DESeq2_config["saved_by"],
+    log2FC_FV, DESeq2_nameDict = readFV (os.path.join (args.baseDir, "FV_DESeq2", "log2FC", "fuzzy_values"), DESeq2_config["saved_by"],
                                          nameDict = {"FS": DESeq2_config["label_sets"] + DESeq2_config["fuzzy_sets"]})
     with open (os.path.join (args.baseDir, "FV_DESeq2", "concepts_log2FC", "concepts_detailed.json")) as f:
         log2FC_concept = json.load (f)["DEFAULT"]
@@ -214,7 +213,7 @@ def main ():
 
     with open (os.path.join (configDir, "DESeq2_padj.json")) as f:
         DESeq2_config = parseConfig (json.load (f))
-    padj_FV, DESeq2_nameDict = readFV (os.path.join (args.baseDir, "FV_DESeq2", "padj"), DESeq2_config["saved_by"],
+    padj_FV, DESeq2_nameDict = readFV (os.path.join (args.baseDir, "FV_DESeq2", "padj", "fuzzy_values"), DESeq2_config["saved_by"],
                                        nameDict = {"feature": DESeq2_nameDict["feature"],"sample": DESeq2_nameDict["sample"],
                                                    "FS": DESeq2_config["label_sets"] + DESeq2_config["fuzzy_sets"]})
     with open (os.path.join (args.baseDir, "FV_DESeq2", "concepts_padj", "concepts_detailed.json")) as f:

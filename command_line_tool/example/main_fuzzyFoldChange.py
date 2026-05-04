@@ -56,7 +56,7 @@ def main ():
     allSets = args.fuzzySets.split (","); print (allSets); print (rules)
     mask = {FS: rules.to_numpy () == FS for FS in allSets}
     for dir in set (os.listdir (args.numerator)) & set (os.listdir (args.denominator)):
-        numDir = os.path.join (args.numerator, dir); denDir = os.path.join (args.denominator, dir)
+        numDir = os.path.join (args.numerator, dir, "fuzzy_values"); denDir = os.path.join (args.denominator, dir, "fuzzy_values")
         if args.savedBy == "feature":
             nameDict = {"feature": [file[12:-4] for file in sorted (set (os.listdir (numDir)) & set (os.listdir (denDir))) if file.endswith (".tsv")],
                         "FS": list (rules.index)}

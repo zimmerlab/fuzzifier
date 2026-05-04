@@ -41,13 +41,17 @@ def main ():
     numDir = os.path.join (args.expression, "numerator"); denDir = os.path.join (args.expression, "denominator")
     numerator = dict (); denominator = dict (); foldChangeDF = list ()
     for cluster in allClusters:
-        featureList = sorted (set ([file[12:-4] for file in os.listdir (os.path.join (numDir, f"submatrix_{cluster}")) if file.endswith (".tsv")]) &
-                              set ([file[12:-4] for file in os.listdir (os.path.join (denDir, f"submatrix_{cluster}")) if file.endswith (".tsv")]))#
+        featureList = sorted (set ([file[12:-4] for file in os.listdir (os.path.join (numDir, f"submatrix_{cluster}", "fuzzy_values"))
+                                    if file.endswith (".tsv")]) &
+                              set ([file[12:-4] for file in os.listdir (os.path.join (denDir, f"submatrix_{cluster}", "fuzzy_values"))
+                                    if file.endswith (".tsv")]))
         sampleList = clustering[clustering == cluster].index
         for feature in featureList:
-            numFV = pd.read_csv (os.path.join (numDir, f"submatrix_{cluster}", f"fuzzyValues_{feature}.tsv"), index_col = 0, sep = "\t").mean (axis = 0)
+            numFV = pd.read_csv (os.path.join (numDir, f"submatrix_{cluster}", "fuzzy_values", f"fuzzyValues_{feature}.tsv"),
+                                 index_col = 0, sep = "\t").mean (axis = 0)
             numFV = numFV.rename (index = {idx: f"{idx}*numerator" for idx in numFV.index})
-            denFV = pd.read_csv (os.path.join (denDir, f"submatrix_{cluster}", f"fuzzyValues_{feature}.tsv"), index_col = 0, sep = "\t").mean (axis = 0)
+            denFV = pd.read_csv (os.path.join (denDir, f"submatrix_{cluster}", "fuzzy_values", f"fuzzyValues_{feature}.tsv"),
+                                 index_col = 0, sep = "\t").mean (axis = 0)
             denFV = denFV.rename (index = {idx: f"{idx}*denominator" for idx in denFV.index})
             numerator[f"{feature}__{cluster}"] = numFV; denominator[f"{feature}__{cluster}"] = denFV
         log2FC = [pd.read_csv (os.path.join (args.log2FC, f"fuzzyValues_{sample}.tsv"), index_col = 0, sep = "\t") for sample in sampleList]
