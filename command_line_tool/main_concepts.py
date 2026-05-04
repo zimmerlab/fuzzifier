@@ -24,8 +24,7 @@ const = {"-infinity": -np.inf, "-inf": -np.inf,
          "+infinity": np.inf, "+inf": np.inf, "infinity": np.inf, "inf": np.inf,
          "nan": np.nan, "na": np.nan}
 constRev = {-np.inf: "-Infinity", np.inf: "Infinity"}
-labels = [const.get (x.lower ()) if isinstance (x, str) else x for x in config.get ("label_values", list ())]
-outputLabels = [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]
+labels = [0] if config.get ("label_zero", False) else list ()
 minLevelCons = config.get ("left_noise_cutoff_constant", -np.inf); maxLevelCons = config.get ("right_noise_cutoff_constant", np.inf)
 minLevelCons = const.get (minLevelCons.lower (), -np.inf) if isinstance (minLevelCons, str) else minLevelCons
 maxLevelCons = const.get (maxLevelCons.lower (), np.inf) if isinstance (maxLevelCons, str) else maxLevelCons
@@ -74,12 +73,6 @@ else:
 if len (renameFS) == 0:
     renameFS = [f"FS{i}" for i in range (1, numFS + 1)]
 
-basicInfo = {"number_fuzzy_sets": numFS, "label_values": outputLabels}
-constraint = {"value_type": consType, "number_fuzzy_sets": numFS, "label_values": outputLabels,
-              "fit_Gaussian_curve": useFit, "use_scipy_optimization": useOptimize, "band_width_factor": bwFct}
-for idx in range (numFS):
-    constraint[renameFS[idx]] = [concept_cons[idx], typeFS_dict[len (concept_cons[idx])], defaultColors[idx], round (percentage[idx], 5)]
-
 if args.mtx.lower ().endswith ("tsv"):
     with open (args.mtx) as f:
         samples = f.readline ().strip ("\n").split ("\t")[1:]
@@ -95,6 +88,21 @@ elif args.mtx.lower ().endswith ("h5ad"):
     values = pd.Series (np.array (adata[adata.obs_names].X.data).reshape ((1, -1))[0]).round (5)
 else:
     raise TypeError
+
+if ((values < 0) & (~np.isfinite (values))).any ():
+    labels.append (-np.inf)
+if ((values > 0) & (~np.isfinite (values))).any ():
+    labels.append (np.inf)
+if np.isnan (values).any ():
+    labels.append (np.nan)
+outputLabels = [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]
+
+constraint = {"value_type": consType, "number_fuzzy_sets": numFS, "label_values": outputLabels,
+              "fit_Gaussian_curve": useFit, "use_scipy_optimization": useOptimize, "band_width_factor": bwFct}
+for idx in range (numFS):
+    constraint[renameFS[idx]] = [concept_cons[idx], typeFS_dict[len (concept_cons[idx])], defaultColors[idx], round (percentage[idx], 5)]
+
+basicInfo = {"number_fuzzy_sets": numFS, "label_values": outputLabels}
 default = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                       minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
                       useFit = False, useOptimize = False, bwFct = bwFct,
