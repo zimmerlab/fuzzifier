@@ -34,19 +34,18 @@ scaleSum = config.get ("force_sum_one", True); renameLabels = config.get ("renam
 renameLabels = {const.get (val.lower ()): renameLabels[val] for val in renameLabels.keys () if isinstance (val, str)}
 if (noMinNoise and (not noMaxNoise)) or ((not noMinNoise) and noMaxNoise):
     renameLabels["MIN-NOISE"] = "NOISE"; renameLabels["MAX-NOISE"] = "NOISE"
-generatePlots = config.get ("generate_report_plots", False)
+generateEval = config.get ("generate_evaluation", False); generatePlots = config.get ("generate_report_plots", False)
 
 with open (args.concept) as f:
     concepts = json.load (f)
 
-if not os.path.exists (args.output):
-    os.makedirs (args.output, exist_ok = True)
-if not os.path.exists (os.path.join (args.output, "fuzzy_values")):
-    os.makedirs (os.path.join (args.output, "fuzzy_values"))
-if generatePlots and not os.path.exists (os.path.join (args.output, "reports")):
-    os.makedirs (os.path.join (args.output, "reports"))
-if not os.path.exists (os.path.join (args.output, "evaluations")):
-    os.makedirs (os.path.join (args.output, "evaluations"))
+outputFV = args.output; os.makedirs (outputFV, exist_ok = True)
+if generateEval or generatePlots:
+    outputFV = os.path.join (args.output, "fuzzy_values"); os.makedirs (outputFV, exist_ok = True)
+    if generateEval:
+        outputEval = os.path.join (args.output, "evaluations"); os.makedirs (outputEval, exist_ok = True)
+    if generatePlots:
+        outputReport = os.path.join (args.output, "reports"); os.makedirs (outputReport, exist_ok = True)
 
 deriveConcepts = (not isinstance (list (concepts.values ())[0], dict))
 if args.mtx.lower ().endswith ("tsv"):
@@ -134,13 +133,14 @@ if direction == "sample":
         memberships, exp, obs, deviation = fuzzify (values, concept, renameLabels = renameLabels,
                                                     ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
                                                     scaleSum = scaleSum)
-        expectation[sample] = exp.round (5); observation[sample] = obs.round (5)
-        summary[sample] = {"deviation": round (deviation, 5), "individual_concept": isFitted}
+        if generateEval:
+            expectation[sample] = exp.round (5); observation[sample] = obs.round (5)
+            summary[sample] = {"deviation": round (deviation, 5), "individual_concept": isFitted}
         if not memberships.empty:
-            memberships.round (3).to_csv (os.path.join (args.output, "fuzzy_values", f"fuzzyValues_{sample}.tsv"), sep = "\t")
+            memberships.round (3).to_csv (os.path.join (outputFV, f"fuzzyValues_{sample}.tsv"), sep = "\t")
             if generatePlots:
                 getReport (values, concept, exp, obs, title = sample, ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
-                           outputPath = os.path.join (args.output, "reports", f"report_{sample}.png"))
+                           outputPath = os.path.join (outputReport, f"report_{sample}.png"))
 else:
     if args.mtx.lower ().endswith ("tsv"):
         with open (args.mtx) as f:
@@ -170,13 +170,14 @@ else:
                 memberships, exp, obs, deviation = fuzzify (values, concept, renameLabels = renameLabels,
                                                             ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
                                                             scaleSum = scaleSum)
-                expectation[feature] = exp.round (5); observation[feature] = obs.round (5)
-                summary[feature] = {"deviation": round (deviation, 5), "individual_concept": isFitted}
+                if generateEval:
+                    expectation[feature] = exp.round (5); observation[feature] = obs.round (5)
+                    summary[feature] = {"deviation": round (deviation, 5), "individual_concept": isFitted}
                 if not memberships.empty:
-                    memberships.round (3).to_csv (os.path.join (args.output, "fuzzy_values", f"fuzzyValues_{feature}.tsv"), sep = "\t")
+                    memberships.round (3).to_csv (os.path.join (outputFV, f"fuzzyValues_{feature}.tsv"), sep = "\t")
                     if generatePlots:
                         getReport (values, concept, exp, obs, title = feature, ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
-                                   outputPath = os.path.join (args.output, "reports", f"report_{feature}.png"))
+                                   outputPath = os.path.join (outputReport, f"report_{feature}.png"))
     if args.mtx.lower ().endswith ("h5ad"):
         for feature in features:
             values = adata[feature].to_df ().loc[feature].round (5)
@@ -202,31 +203,33 @@ else:
             memberships, exp, obs, deviation = fuzzify (values, concept, renameLabels = renameLabels,
                                                         ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
                                                         scaleSum = scaleSum)
-            expectation[feature] = exp.round (5); observation[feature] = obs.round (5)
-            summary[feature] = {"deviation": round (deviation, 5), "individual_concept": isFitted}
+            if generateEval:
+                expectation[feature] = exp.round (5); observation[feature] = obs.round (5)
+                summary[feature] = {"deviation": round (deviation, 5), "individual_concept": isFitted}
             if not memberships.empty:
                 memberships.round (3).to_csv (os.path.join (args.output, "fuzzy_values", f"fuzzyValues_{feature}.tsv"), sep = "\t")
                 if generatePlots:
                     getReport (values, concept, exp, obs, title = feature, ignoreMinNoise = noMinNoise, ignoreMaxNoise = noMaxNoise,
                                outputPath = os.path.join (args.output, "reports", f"report_{feature}.png"))
 
-expectation = pd.DataFrame (expectation).T; expectation.to_csv (os.path.join (args.output, "evaluations", "expected_percentage.tsv"), sep = "\t")
-observation = pd.DataFrame (observation).T; observation.to_csv (os.path.join (args.output, "evaluations", "observed_percentage.tsv"), sep = "\t")
-getClusterMap (expectation, "Blues", "sample" if direction == "sample" else "feature", center = None, title = "expected percentage",
-               outputPath = os.path.join (args.output, "evaluations", "expected_percentage.png"))
-getClusterMap (observation, "Blues", "sample" if direction == "sample" else "feature", center = None, title = "observed percentage",
-               outputPath = os.path.join (args.output, "evaluations", "observed_percentage.png"))
-getClusterMap (observation - expectation, "vlag", "sample" if direction == "sample" else "feature", center = 0, title = "observation - expectation",
-               outputPath = os.path.join (args.output, "evaluations", "deviation.png"))
-
-summary = pd.DataFrame.from_dict (summary, orient = "index"); summary.to_csv (os.path.join (args.output, "evaluations", "summary.tsv"), sep = "\t")
-fig, ax = plt.subplots (figsize = (6, 4))
-if summary["individual_concept"].any ():
-    ax.hist (summary.loc[summary["individual_concept"], "deviation"], bins = 25, color = "firebrick", alpha = 0.6, label = "individual fuzzy concept")
-if not summary["individual_concept"].all ():
-    ax.hist (summary.loc[~summary["individual_concept"], "deviation"], bins = 25, color = "steelblue", alpha = 0.6, label = "default fuzzy concept")
-ax.set_xlabel ("observation - expectation", size = 10); ax.set_ylabel ("number of samples", size = 10); ax.legend (facecolor = "white")
-fig.tight_layout (); plt.savefig (os.path.join (args.output, "evaluations", "distribution_deviation.png")); plt.close ()
+if generateEval:
+    expectation = pd.DataFrame (expectation).T; expectation.to_csv (os.path.join (outputEval, "expected_percentage.tsv"), sep = "\t")
+    observation = pd.DataFrame (observation).T; observation.to_csv (os.path.join (outputEval, "observed_percentage.tsv"), sep = "\t")
+    if expectation.shape[0] <= 1000:
+        getClusterMap (expectation, "Blues", "sample" if direction == "sample" else "feature", center = None, title = "expected percentage",
+                       outputPath = os.path.join (outputEval, "expected_percentage.png"))
+        getClusterMap (observation, "Blues", "sample" if direction == "sample" else "feature", center = None, title = "observed percentage",
+                       outputPath = os.path.join (outputEval, "observed_percentage.png"))
+        getClusterMap (observation - expectation, "vlag", "sample" if direction == "sample" else "feature", center = 0,
+                       title = "observation - expectation", outputPath = os.path.join (outputEval, "deviation.png"))
+    summary = pd.DataFrame.from_dict (summary, orient = "index"); summary.to_csv (os.path.join (outputEval, "summary.tsv"), sep = "\t")
+    fig, ax = plt.subplots (figsize = (6, 4))
+    if summary["individual_concept"].any ():
+        ax.hist (summary.loc[summary["individual_concept"], "deviation"], bins = 25, color = "firebrick", alpha = 0.6, label = "individual fuzzy concept")
+    if not summary["individual_concept"].all ():
+        ax.hist (summary.loc[~summary["individual_concept"], "deviation"], bins = 25, color = "steelblue", alpha = 0.6, label = "default fuzzy concept")
+    ax.set_xlabel ("observation - expectation", size = 10); ax.set_ylabel ("number of samples", size = 10); ax.legend (facecolor = "white")
+    fig.tight_layout (); plt.savefig (os.path.join (outputEval, "distribution_deviation.png")); plt.close ()
 
 if deriveConcepts:
     with open (os.path.join (args.output, "concepts_detailed.json"), "w", encoding = "utf-8") as f:
