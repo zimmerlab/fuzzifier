@@ -1,3 +1,6 @@
+import os
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -127,22 +130,18 @@ def _adjustBorder (concept, minimum, maximum):
 
 
 def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
-                minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                 useFit = False, useOptimize = False, bwFct = 1,
                 refConcept = list (), consValue = list (),
                 widthFct = 1, slopeFct = 0.5, centerIdx = 0):
     masked = values.replace (labels, np.nan).dropna (); info = basicInfo.copy ()
     typeFS_dict = {2: "Gaussian", 4: "trapezoidal"}
-    defaultColors = ["#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
-                     "#8C564B", "#E377C2", "#7F7F7F", "#BCBD22", "#17BECF",
-                     "#AEC7E8", "#FFBB78", "#98DF8A", "#FF9896", "#C5B0D5",
-                     "#C49C94", "#F7B6D2", "#C7C7C7", "#DBDB8D", "#9EDAE5"]
     if masked.empty:
         if method == "constraint" and consType == "fixed":
             info["MIN-NOISE"] = round (minLevelCons, 3) if np.isfinite (minLevelCons) else "-Infinity"
             info["MAX-NOISE"] = round (maxLevelCons, 3) if np.isfinite (maxLevelCons) else "Infinity"
             for idx in range (numFS):
-                info[renameFS[idx]] = [refConcept[idx], typeFS_dict[len (refConcept[idx])], defaultColors[idx], 0]
+                info[renameFS[idx]] = [refConcept[idx], typeFS_dict[len (refConcept[idx])], colorList[idx], 0]
         else:
             info["number_fuzzy_sets"] = 0
     else:
@@ -155,7 +154,7 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
             if consType == "fixed":
                 percent = getPercentage (values, refConcept, labels = labels, minLevel = minLevel, maxLevel = maxLevel)
                 for idx in range (numFS):
-                    info[renameFS[idx]] = [refConcept[idx], typeFS_dict[len (refConcept[idx])], defaultColors[idx], round (percent[idx], 5)]
+                    info[renameFS[idx]] = [refConcept[idx], typeFS_dict[len (refConcept[idx])], colorList[idx], round (percent[idx], 5)]
             elif consType == "proportion" and not masked.empty:
                 percentiles = masked.quantile (consValue).round (3); std = masked.std (); typeFS = list (); concept = list ()
                 for idx in range (numFS):
@@ -168,7 +167,7 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                 percent = getPercentage (masked.quantile (np.linspace (0, 1, 1001)), concept, labels = list (),
                                          minLevel = minLevel, maxLevel = maxLevel)
                 for idx in range (numFS):
-                    info[renameFS[idx]] = [concept[idx], typeFS[idx], defaultColors[idx], round (percent[idx], 5)]
+                    info[renameFS[idx]] = [concept[idx], typeFS[idx], colorList[idx], round (percent[idx], 5)]
             elif consType == "z-score" and not masked.empty:
                 mu, sigma = _fitMode (masked, bwFct = bwFct, useFit = useFit, useOptimize = useOptimize)
                 if (not (np.isnan (mu) and np.isnan (sigma))) and sigma > 0:
@@ -182,7 +181,7 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                     concept = _adjustBorder (concept, masked.min (), masked.max ())
                     percent = getSubarea (mu, sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
                     for idx in range (numFS):
-                        info[renameFS[idx]] = [concept[idx], typeFS[idx], defaultColors[idx], round (percent[idx], 5)]
+                        info[renameFS[idx]] = [concept[idx], typeFS[idx], colorList[idx], round (percent[idx], 5)]
             else:
                 info["number_fuzzy_sets"] = 0
         elif method == "default":
@@ -194,7 +193,7 @@ def getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
                 concept = _adjustBorder (concept, masked.min (), masked.max ())
                 percent = getSubarea (mu, sigma, concept, minLevel = minLevel, maxLevel = maxLevel)
                 for idx in range (numFS):
-                    info[renameFS[idx]] = [concept[idx], typeFS_dict[len (concept[idx])], defaultColors[idx], round (percent[idx], 5)]
+                    info[renameFS[idx]] = [concept[idx], typeFS_dict[len (concept[idx])], colorList[idx], round (percent[idx], 5)]
             else:
                 info["number_fuzzy_sets"] = 0
         else:
@@ -224,8 +223,8 @@ def fuzzify (rawValues, concept, renameLabels = dict (), ignoreMinNoise = False,
     maxLevel = np.inf if ignoreMaxNoise else concept.get ("MAX-NOISE", np.inf)
     if numFS == 0:
         return pd.DataFrame (dtype = float), pd.DataFrame (dtype = float), np.nan
-    masked = rawValues.replace (labels, np.nan).to_numpy (); memberships = pd.DataFrame (index = rawValues.index, dtype = float)
-    expectation = pd.Series (dtype = float)
+    masked = rawValues.replace (labels, np.nan).to_numpy ()
+    memberships = pd.DataFrame (index = rawValues.index, dtype = float); expectation = pd.Series (dtype = float)
     for key in concept.keys ():
         if key in ["number_fuzzy_sets", "label_values", "MIN-NOISE", "MAX-NOISE"]:
             continue
@@ -247,12 +246,14 @@ def fuzzify (rawValues, concept, renameLabels = dict (), ignoreMinNoise = False,
                 if params[0] == params[1]:
                     left = np.zeros (len (masked))
                 else:
-                    left = (masked < params[1]).astype (int) * np.clip ((params[0] - masked) / (params[0] - params[1]), a_min = 0, a_max = np.inf)
+                    left = (masked < params[1]).astype (int) * np.clip ((params[0] - masked) / (params[0] - params[1]),
+                                                                        a_min = 0, a_max = np.inf)
                 middle = ((masked >= params[1]) & (masked <= params[2])).astype (float)
                 if params[2] == params[3]:
                     right = np.zeros (len (masked))
                 else:
-                    right = (masked > params[2]).astype (int) * np.clip ((params[3] - masked) / (params[3] - params[2]), a_min = 0, a_max = np.inf)
+                    right = (masked > params[2]).astype (int) * np.clip ((params[3] - masked) / (params[3] - params[2]),
+                                                                         a_min = 0, a_max = np.inf)
                 memberships[key] = left + middle + right
         elif typeFS == "Gaussian":
             if np.isnan (params[0]) or np.isnan (params[1]) or params[1] == 0:
@@ -266,7 +267,7 @@ def fuzzify (rawValues, concept, renameLabels = dict (), ignoreMinNoise = False,
                     platform = np.zeros (len (masked))
                 memberships[key] = platform + (1 - platform) * np.exp (-(masked - params[0]) ** 2 / (2 * params[1] ** 2))
         else:
-            raise ValueError
+            memberships[key] = 0
     masked = pd.Series (masked, index = rawValues.index)
     if np.isfinite (maxLevel):
         outliers = (masked >= maxLevel); name = renameLabels.get ("MAX-NOISE", "MAX-NOISE")
@@ -390,14 +391,126 @@ def getReport (values, concept, expectation, observation, title = "", ignoreMinN
 
 
 def getClusterMap (df, palette, axisLabel, center = None, title = "", outputPath = "clustermap.png"):
-    if center is None:
-        g = sns.clustermap (df, dendrogram_ratio = (0.2, 0.1), cmap = palette, yticklabels = False, figsize = (5, 6))
-    else:
-        g = sns.clustermap (df, dendrogram_ratio = (0.2, 0.1), cmap = palette, center = center, yticklabels = False, figsize = (5, 6))
+    try:
+        if center is None:
+            g = sns.clustermap (df, dendrogram_ratio = (0.2, 0.1), cmap = palette, yticklabels = False, figsize = (5, 6))
+        else:
+            g = sns.clustermap (df, dendrogram_ratio = (0.2, 0.1), cmap = palette, center = center, yticklabels = False, figsize = (5, 6))
+    except RecursionError:
+        return
     g.ax_heatmap.set_xticklabels (g.ax_heatmap.get_xticklabels (), size = 9, rotation = 0, ha = "center")
     g.ax_heatmap.xaxis.tick_bottom (); g.ax_heatmap.set_ylabel (axisLabel, size = 10)
     if title != "":
         g.fig.suptitle (title, size = 12.5)
     plt.savefig (outputPath); plt.close ()
+
+
+
+def optimizeFit (rawValues, concept, exp, obs, cutoff, centerFS = "MEDIUM", ignoreMinNoise = False, ignoreMaxNoise = False, maxIteration = 100):
+    numFS = concept.get ("number_fuzzy_sets", 0); diff = obs - exp
+    if (not concept) or numFS == 0:
+        return dict ()
+    if (diff[centerFS] >= -cutoff) or (diff.drop (centerFS) <= cutoff).all ():
+        return {centerFS: concept[centerFS][0]}
+    diff[centerFS] = np.abs (diff[centerFS]); diff = diff[diff > cutoff]
+    allSets = list (diff.index); width = concept[centerFS][0][1] / len (allSets)
+    labels = concept.get ("label_values", list ())
+    minLevel = -np.inf if ignoreMinNoise else concept.get ("MIN-NOISE", -np.inf)
+    maxLevel = np.inf if ignoreMaxNoise else concept.get ("MAX-NOISE", np.inf)
+    masked = rawValues.replace (labels, np.nan); masked = masked.mask ((masked <= minLevel) | (masked >= maxLevel)).dropna ().to_numpy ()
+    params = {FS: [(concept[FS][0][1] + concept[FS][0][2]) / 2 if concept[FS][1] == "trapezoidal" else concept[FS][0][0], width]
+              for FS in diff.index}
+    numIter = 0; bestResult = np.round ([params[FS] for FS in allSets], 3)
+    while numIter < maxIteration:
+        memberships = pd.DataFrame ({FS: stats.norm.pdf (masked, loc = params[FS][0], scale = params[FS][1]) for FS in allSets})
+        pctMainFS = memberships.idxmax (axis = 1, skipna = True).value_counts (normalize = True)
+        pctMainFS = pd.Series ([pctMainFS.get (FS, 0) for FS in allSets], index = allSets)
+        probSampleFS = memberships * pctMainFS; probSample = probSampleFS.sum (axis = 1)
+        params = dict (); newSets = list ()
+        for FS in allSets:
+            with np.errstate (divide = "ignore", invalid = "ignore"):
+                prob = pd.Series ([probSampleFS.loc[sample, FS] / probSample[sample] for sample in probSample.index])
+                peak = (prob * masked).sum (skipna = True) / prob.sum (skipna = True)
+                width = np.sqrt ((prob * (masked - peak) ** 2).sum (skipna = True) / prob.sum (skipna = True))
+            if (not np.isnan (peak)) and (not np.isnan (width)) and width != 0:
+                params[FS] = [round (peak, 3), round (width, 3)]; newSets.append (FS)
+        res = np.array ([params[FS] for FS in newSets]); allSets = newSets.copy ()
+        if res.shape[0] == bestResult.shape[0]:
+            if (res == bestResult).all ():
+                break
+        elif res.shape[0] <= 1:
+            return {centerFS: concept[centerFS][0]}
+        bestResult = res.copy (); numIter += 1
+    return params
+
+
+
+# in Bearbeitung
+def optimizeConcept (rawValues, concept, optParams, xRange, widthFct = 1, slopeFct = 0.5):
+    if not optParams:
+        return concept
+    allSets = [key for key in concept if key not in ["number_fuzzy_sets", "label_values", "MIN-NOISE", "MAX-NOISE"]]
+    optSets = list (optParams.keys ()); tmp = [-1] + [allSets.index (FS) for FS in optSets] + [len (allSets)]
+    idxList = pd.DataFrame (index = optParams.keys (), columns = ["left", "right"], dtype = int)
+    for idx in range (1, len (optSets) + 1):
+        idxList.loc[optSets[idx - 1]] = {"left": tmp[idx] - tmp[idx - 1] - 1, "right": tmp[idx + 1] - tmp[idx] - 1}
+    partial = dict (); centers = dict ()
+    for FS in optSets:
+        left, right = idxList.loc[FS].astype (int); mu, sigma = optParams[FS]
+        centerIdx = left if FS == optSets[0] else right if FS == optSets[-1] else max ([left, right])
+        numFS = 2 * centerIdx + 1; centers[FS] = centerIdx
+        coords = [mu + widthFct * (i + overlap) * sigma for i in np.linspace (-numFS, numFS, numFS + 1)
+                  for overlap in [-slopeFct, slopeFct]]
+        coords = np.round ([coords[(2 * k - 2):(2 * k + 2)] for k in range (1, numFS + 1)], 3).tolist ()
+        coords[centerIdx] = [mu, sigma]; partial[FS] = coords
+    minimum = concept.get ("MIN-NOISE", -np.inf); minimum = minimum if np.isfinite (minimum) else xRange[0]
+    maximum = concept.get ("MAX-NOISE", np.inf); maximum = maximum if np.isfinite (maximum) else xRange[1]
+    currFS = optSets[0]; left = centers[currFS]; fullConcept = partial[currFS][:(left + 1)]; origin = [currFS] * (left + 1)
+    for idx in range (len (optSets) - 1):
+        currFS = optSets[idx]; nextFS = optSets[idx + 1]; left = centers[currFS]; right = centers[nextFS]
+        overlap = int (idxList.loc[currFS, "right"]); op = int (overlap // 2)
+        if overlap == 0:
+            fullConcept.append (partial[nextFS][right]); origin.append (nextFS)
+        elif overlap % 2 == 0:
+            leftConcept = partial[currFS][(left + 1):(left + op + 1)]; rightConcept = partial[nextFS][-(right + op + 1):(right + 1)]
+            opLeft = max (leftConcept[-1][1], min (leftConcept[-1][2], rightConcept[0][0]))
+            opRight = min (rightConcept[0][2], max (leftConcept[-1][3], rightConcept[0][1]))
+            overlap = [[leftConcept[-1][0], leftConcept[-1][1], opLeft, opRight],
+                       [opLeft, opRight, rightConcept[0][2], rightConcept[0][3]]]
+            fullConcept += leftConcept[:-1] + overlap + rightConcept[1:]; origin += [currFS] * op + [nextFS] * (op + 1)
+        else:
+            leftConcept = partial[currFS][(left + 1):(left + op + 2)]; rightConcept = partial[nextFS][-(right + op + 2):(right + 1)]
+            opLeft = leftConcept[-1][1]; opRight = rightConcept[0][2]
+            overlap = [[leftConcept[-1][0], opLeft, opRight, rightConcept[0][3]]]
+            if leftConcept[-1][0] > rightConcept[0][3]:
+                leftConcept = leftConcept[:-1]; rightConcept = rightConcept[1:]
+                opLeft = max (leftConcept[-1][1], min (leftConcept[-1][2], rightConcept[0][0]))
+                opRight = min (rightConcept[0][2], max (leftConcept[-1][3], rightConcept[0][1]))
+                overlap = [[leftConcept[-1][0], leftConcept[-1][1], opLeft, opRight], list (),
+                           [opLeft, opRight, rightConcept[0][2], rightConcept[0][3]]]
+            elif opLeft > opRight:
+                mid = round ((opLeft + opRight) / 2, 3); opLeft = mid; opRight = mid
+                overlap = [[leftConcept[-1][0], opLeft, opRight, rightConcept[0][3]]]
+            fullConcept += leftConcept[:-1] + overlap + rightConcept[1:]; origin += [currFS] * op + [""] + [nextFS] * (op + 1)
+    fullConcept += partial[optSets[-1]][(centers[optSets[-1]] + 1):]; origin += [optSets[-1]] * right
+    fullConcept = _adjustBorder (fullConcept, minimum, maximum)
+    expPct = {FS: getSubarea (*partial[FS][centers[FS]], fullConcept, minLevel = minimum, maxLevel = maximum) for FS in optSets}
+    fullConcept = dict (zip (allSets, fullConcept)); labels = concept.get ("label_values", list ())
+    fct = dict (zip (optSets, getPercentage (rawValues, [fullConcept[key] for key in optSets], labels = labels,
+                                             minLevel = minimum, maxLevel = maximum)))
+    newConcept = concept.copy ()
+    for idx in range (len (allSets)):
+        FS = allSets[idx]; params = fullConcept[FS]
+        if origin[idx] == "":
+            exp = (fct[origin[idx - 1]] * expPct[origin[idx - 1]][idx - 1] + fct[origin[idx + 1]] * expPct[origin[idx + 1]][idx + 1]) / 2
+        else:
+            exp = fct[origin[idx]] * expPct[origin[idx]][idx]
+        if len (params) == 4:
+            newConcept[FS] = [params, "trapezoidal", concept[FS][2], round (exp, 5)]
+        elif len (params) == 2:
+            newConcept[FS] = [params, "Gaussian", concept[FS][2], round (exp, 5)]
+        else:
+            newConcept[FS] = [list (), "", concept[FS][2], 0]
+    return newConcept
 
 
