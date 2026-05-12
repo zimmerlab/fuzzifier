@@ -72,7 +72,7 @@ if deriveConcepts:
     consType = concepts.get ("value_type", "fixed"); consValue = list (); bwFct = concepts.get ("band_width_factor", 1)
     outputLabels = concepts.get ("label_values", list ())
     labels = [const.get (x.lower ()) if isinstance (x, str) else x for x in outputLabels]
-    renameFS = [key for key in concepts.keys () if key not in param_keys]
+    renameFS = [key for key in concepts.keys () if key not in param_keys]; colorList = [concepts[FS][2] for FS in renameFS]
     numFS = concepts.get ("number_fuzzy_sets", len (renameFS)); concept_cons = [concepts[FS][0] for FS in renameFS]
     useFit = concepts.get ("fit_Gaussian_curve", False); useOptimize = concepts.get ("use_scipy_optimization", False)
     if consType == "proportion":
@@ -91,7 +91,7 @@ if deriveConcepts:
     if args.mtx.lower ().endswith ("h5ad"):
         values = pd.Series (np.array (adata[adata.obs_names].X.data).reshape ((1, -1))[0]).round (5)
     default = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                          minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                          minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                           refConcept = concept_cons, consValue = consValue,
                           useFit = False, useOptimize = False, bwFct = bwFct)
     defaultOutput = default.copy (); defaultOutput["label_values"] = outputLabels; allConcepts = {defaultName: defaultOutput}
@@ -116,7 +116,7 @@ if direction == "sample":
             values = adata[sample].to_df ().loc[sample].round (5)
         if deriveConcepts:
             concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                                   refConcept = concept_cons, consValue = consValue,
                                   useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
             if concept["number_fuzzy_sets"] == 0:
@@ -151,7 +151,7 @@ else:
                 if direction == "feature":
                     if deriveConcepts:
                         concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                                              minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                              minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                                               refConcept = concept_cons, consValue = consValue,
                                               useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
                         if concept["number_fuzzy_sets"] == 0:
@@ -184,7 +184,7 @@ else:
             if direction == "feature":
                 if deriveConcepts:
                     concept = getConcept (values, "constraint", consType, basicInfo, numFS, renameFS, labels,
-                                          minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                          minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                                           refConcept = concept_cons, consValue = consValue,
                                           useFit = useFit, useOptimize = useOptimize, bwFct = bwFct)
                     if concept["number_fuzzy_sets"] == 0:

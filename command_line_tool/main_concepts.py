@@ -7,6 +7,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import matplotlib.colors as mcolors
 from helper_functions import getConcept, getPercentage, getSubarea
 
 # python main_concepts.py --mtx rawValueMatrix --config config --output outputDirectory
@@ -33,13 +34,8 @@ minLevelPct = const.get (minLevelPct.lower (), 0) if isinstance (minLevelPct, st
 maxLevelPct = const.get (maxLevelPct.lower (), 1) if isinstance (maxLevelPct, str) else maxLevelPct
 defaultName = config.get ("key_default_concept", "DEFAULT"); direction = config.get ("define_concept_per", "feature")
 method = config["define_concept_by"]; params = config.get (f"parameters_{method}", dict ())
-renameFS = config.get ("fuzzy_variables", list ())
+renameFS = config.get ("fuzzy_variables", list ()); colors = config.get ("colors", list ())
 
-typeFS_dict = {2: "Gaussian", 4: "trapezoidal"}
-defaultColors = ["#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
-                 "#8C564B", "#E377C2", "#7F7F7F", "#BCBD22", "#17BECF",
-                 "#AEC7E8", "#FFBB78", "#98DF8A", "#FF9896", "#C5B0D5",
-                 "#C49C94", "#F7B6D2", "#C7C7C7", "#DBDB8D", "#9EDAE5"]
 if method == "constraint":
     consType = params.get ("constraint_type", "fixed"); concept_cons = params["constraints"]; numFS = len (concept_cons)
     if consType == "fixed":
@@ -70,8 +66,16 @@ elif method == "default":
     percentage = getSubarea (0, 1, concept_cons, minLevel = -np.inf, maxLevel = np.inf)
 else:
     raise ValueError
+
+defaultColors = ["#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
+                 "#8C564B", "#E377C2", "#7F7F7F", "#BCBD22", "#17BECF",
+                 "#AEC7E8", "#FFBB78", "#98DF8A", "#FF9896", "#C5B0D5",
+                 "#C49C94", "#F7B6D2", "#C7C7C7", "#DBDB8D", "#9EDAE5"]
 if len (renameFS) == 0:
     renameFS = [f"FS{i}" for i in range (1, numFS + 1)]
+colorList = [colors[i] if len (colors[i]) == 7 and colors[i].startswith ("#") else mcolors.cnames.get (colors[i], defaultColors[i])
+             for i in range (len (colors))]
+colorList += list (filter (lambda x: not x in colorList, defaultColors))[len (colorList):numFS]
 
 if args.mtx.lower ().endswith ("tsv"):
     with open (args.mtx) as f:
@@ -97,14 +101,15 @@ if np.isnan (values).any ():
     labels.append (np.nan)
 outputLabels = [constRev.get (x, x) if not np.isnan (x) else "NA" for x in labels]
 
+typeFS_dict = {2: "Gaussian", 4: "trapezoidal"}
 constraint = {"value_type": consType, "number_fuzzy_sets": numFS, "label_values": outputLabels,
               "fit_Gaussian_curve": useFit, "use_scipy_optimization": useOptimize, "band_width_factor": bwFct}
 for idx in range (numFS):
-    constraint[renameFS[idx]] = [concept_cons[idx], typeFS_dict[len (concept_cons[idx])], defaultColors[idx], round (percentage[idx], 5)]
+    constraint[renameFS[idx]] = [concept_cons[idx], typeFS_dict[len (concept_cons[idx])], colorList[idx], round (percentage[idx], 5)]
 
 basicInfo = {"number_fuzzy_sets": numFS, "label_values": outputLabels}
 default = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
-                      minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                      minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                       useFit = False, useOptimize = False, bwFct = bwFct,
                       refConcept = concept_cons, consValue = consValue,
                       widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
@@ -119,7 +124,7 @@ if direction == "feature":
                 values = pd.Series ([np.nan if x == "" else float (x) for x in f.readline ().strip ("\n").split ("\t")[1:]],
                                     index = samples).round (5)
                 detailedConcept[feature] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
-                                                       minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                                       minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                                                        useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
                                                        refConcept = concept_cons, consValue = consValue,
                                                        widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
@@ -127,7 +132,7 @@ if direction == "feature":
         for feature in features:
             values = pd.Series (np.array (adata[feature].X.data)[0]).round (5)
             detailedConcept[feature] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
-                                                   minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                                   minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                                                    useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
                                                    refConcept = concept_cons, consValue = consValue,
                                                    widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
@@ -144,7 +149,7 @@ elif direction == "sample":
                                         index = features)
             values[values == ""] = np.nan; values = values.astype (float).round (5); maxSplit += 1
             detailedConcept[sample] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
-                                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                                                   useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
                                                   refConcept = concept_cons, consValue = consValue,
                                                   widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
@@ -153,7 +158,7 @@ elif direction == "sample":
         for sample in samples:
             values = pd.Series (np.array (adata[sample].X.data)[0]).round (5)
             detailedConcept[sample] = getConcept (values, method, consType, basicInfo, numFS, renameFS, labels,
-                                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct,
+                                                  minLevelCons, minLevelPct, maxLevelCons, maxLevelPct, colorList,
                                                   useFit = useFit, useOptimize = useOptimize, bwFct = bwFct,
                                                   refConcept = concept_cons, consValue = consValue,
                                                   widthFct = widthFct, slopeFct = slopeFct, centerIdx = centerIdx)
