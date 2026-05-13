@@ -1,7 +1,13 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "8"
+os.environ["MKL_NUM_THREADS"] = "8"
+os.environ["OPENBLAS_NUM_THREADS"] = "8"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "8"
+os.environ["NUMEXPR_NUM_THREADS"] = "8"
+
 import warnings
 warnings.simplefilter (action = "ignore", category = FutureWarning)
 
-import os
 import json
 import argparse
 import numpy as np
