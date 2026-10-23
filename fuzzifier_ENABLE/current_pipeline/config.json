@@ -1,0 +1,28 @@
+{
+    "label_zero": false,
+    "left_noise_cutoff_constant": 6,
+    "right_noise_cutoff_constant": "+Infinity",
+    "left_noise_cutoff_percent": 0,
+    "right_noise_cutoff_percent": 1,
+    "key_default_concept": "DEFAULT",
+    "define_concept_per": "feature",
+    "define_concept_by": "default",
+    "fuzzy_variables": ["LOW", "low", "MID", "high", "HIGH"],
+    "colors": ["blue", "steelblue", "green", "firebrick", "red"],
+    "parameters_default": {
+        "number_fuzzy_sets_per_side": 2,
+        "band_width_factor": 0.75,
+        "width_scale_factor": 0.5,
+        "slope_percentage": 0.5,
+        "use_scipy_optimization": true
+    },
+    "fuzzify_per": "feature",
+    "ignore_MIN-NOISE": false,
+    "ignore_MAX-NOISE": true,
+    "force_sum_one": false,
+    "rename_labels": {
+        "-Infinity": "NO_EXP"
+    },
+    "generate_evaluation": true,
+    "generate_report_plots": false
+}

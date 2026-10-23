@@ -1,0 +1,14 @@
+name	condition	control	path	condition_name	control_name
+test1_dataset	underweight,normalweight,overweight,class I obesity,class II obesity	kUmA-N,kUmNA-N,kNmA-N,kNmNA-N	./test1/data_set/	adult	kid
+test1_normalweight	underweight,normalweight	kNmA-N,kNmNA-N	./test1/normalweight/	adult	kid
+test1_overweight	overweight,class I obesity,class II obesity	kUmA-N,kUmNA-N	./test1/overweight/	adult	kid
+test2_dataset	overweight,class I obesity,class II obesity,kUmA-N,kUmNA-N	underweight,normalweight,kNmA-N,kNmNA-N	./test2/data_set/	overweight	normalweight
+test2_adult	overweight,class I obesity,class II obesity	underweight,normalweight	./test2/adult/	overweight	normalweight
+test2_kid	kUmA-N,kUmNA-N	kNmA-N,kNmNA-N	./test2/kid/	overweight	normalweight
+test3	kUmA-N	kUmNA-N,kNmA-N,kNmNA-N	./test3/	kUmA-N	kXmX-N
+test4	kUmA-N,kUmNA-N	kNmA-N,kNmNA-N	./test4/	kUmX-N	kNmX-N
+test5	kUmA-T	kUmNA-T,kNmA-T,kNmNA-T	./test5/	kUmA-T	kXmX-T
+test6	kUmA-T,kUmNA-T	kNmA-T,kNmNA-T	./test6/	kUmX-T	kNmX-T
+test7_dataset	kUmA-N,kUmNA-N,kNmA-N,kNmNA-N	kUmA-T,kUmNA-T,kNmA-T,kNmNA-T	./test7/data_set/	neutrophil	T-cell
+test7_normalweight	kNmA-N,kNmNA-N	kNmA-T,kNmNA-T	./test7/normalweight/	neutrophil	T-cell
+test7_overweight	kUmA-N,kUmNA-N	kUmA-T,kUmNA-T	./test7/overweight/	neutrophil	T-cell
